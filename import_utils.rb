@@ -5,7 +5,7 @@ require 'chronic_duration'
 
 class ImportUtils
 
-  def get_resource(url)
+  def get_url_resource(url)
     uri = URI(url)
     path = uri.path
     filename = 'cache' + path
@@ -21,6 +21,7 @@ class ImportUtils
           FileUtils.mkdir_p(dirname)
         end
         File.open(filename, 'a:UTF-8').puts html
+        sleep(1.0/8.0)
         puts 'done'
       rescue OpenURI::HTTPError => e
         puts url + ': ' + e.message
@@ -30,9 +31,9 @@ class ImportUtils
     return html
   end
 
-  def parse_result(url, prefix)
+  def parse_result(url, year, prefix)
     puts 'working on ' + url
-    html = get_resource(url)
+    html = get_url_resource(url)
     doc = Nokogiri::HTML(html)
     doc.encoding = 'utf-8'
     doc.css('script, link', 'img').each { |node| node.remove }
@@ -46,7 +47,8 @@ class ImportUtils
     j = 0
     #doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
     tmp = doc.xpath("//td[@class='texte']")
-    output = File.open('stage_results-etapes-mdc2.txt', 'a:UTF-8')
+    output = File.open("stage_results-#{year}.txt", 'a:UTF-8')
+    output.puts "'year';'stage.sub';'pos';'runner_name';time;time_diff"
     last_dif = ''
     last_pos = '?'
     tmp.each do |node|
@@ -57,27 +59,27 @@ class ImportUtils
       tmp.each do |line|
         line.strip!
         line = line.gsub(/[[:space:]]/, ' ')
-        if (line.include?('Classement')) then
+        if (line.include?('Classement général :')) then
           output.flush()
           output.close()
-          output = File.open('stage_results-general-mdc.txt', 'a:UTF-8')
+          output = File.open("stage_results-general-#{year}.txt", 'a:UTF-8')
         elsif (line =~ /^([0-9]+)\. ([^à]+) à ([0-9]+.*)/) then
-          tmp = line.gsub(/^([0-9]+)\. ([^à]+) à ([0-9]+.*)/, '\1;\2;;\3;')
+          tmp = line.gsub(/^([0-9]+)\. ([^à]+) à ([0-9]+.*)/, '\1;\2;;\3')
           last_pos = tmp.split(';')[0]
           last_dif = tmp.split(';')[3]
           output.puts prefix + tmp
-          puts 'set last_pos to à >' + last_pos + '<'
+         # puts 'set last_pos to à >' + last_pos + '<'
         elsif (line =~ /^([0-9]+)\. ([^à]+) en ([0-9]+.*)/) then
-          tmp = line.gsub(/^([0-9]+)\. ([^à]+) en ([0-9]+.*)/, '\1;\2;\3;;')
+          tmp = line.gsub(/^([0-9]+)\. ([^à]+) en ([0-9]+.*)/, '\1;\2;\3;')
           last_pos = tmp.split(';')[0]
           last_dif = ''
           output.puts prefix + tmp
-          puts 'set last_pos to en >' + last_pos + '<'
+          # puts 'set last_pos to en >' + last_pos + '<'
         elsif (line =~ /^([0-9]+)\. (.*)/) then
           tmp = line.gsub(/^([0-9]+)\. (.*)/, '\1;\2;;' + last_dif)
           last_pos = tmp.split(';')[0]
           output.puts prefix + tmp
-          puts 'set last_pos to >' + last_pos + '<'
+          # puts 'set last_pos to >' + last_pos + '<'
         elsif (line =~ /^[ ][ ]+(.*)/) then
           output.puts prefix + line.gsub(/^[ ][ ]+(.*)/, last_pos + ';\1;;' + last_dif)
         else
@@ -108,24 +110,36 @@ class ImportUtils
     output.close()
   end
 
-  def retrieve_stage()
+    def get_prefix_url(year)
 
-
+    if (year > 2013) then
+     'http://www.memoire-du-cyclisme.eu/eta_tdf_2014_2023/'
+    else
+     'http://www.memoire-du-cyclisme.eu/eta_tdf_2006/'
+    end
   end
 
   def retrieve_year(year)
-    file = File.open('stage_results-misssing-hugo.txt', 'a:UTF-8')
-    file.puts('name;year;firstname;lastname;team;distance;averageSpeed;winnerPrize;poolPrize;')
-    year = 1981
+    prefix_url = get_prefix_url(year)
+    get_generic_infos(prefix_url, year)
+    get_stages_infos(prefix_url, year)
+  end
+
+  def get_generic_infos(prefix_url, year)
+
+  end
+
+  def get_stages_infos(prefix_url, year)
+    File.open("stage_results-#{year}.txt", 'w+:UTF-8').close
+    File.open("stage_results-general-#{year}.txt", 'w+:UTF-8').close
     stage=1
     sub=0
     remaining_stage=true
-    while (stage < 5 && remaining_stage) do
+    while (stage < 25 && remaining_stage) do
       begin
         search_sub = false
         result_found=false
         error=false
-
         stage_str = if (stage == 0) then
                       'p'
                     else
@@ -146,15 +160,15 @@ class ImportUtils
             stage_str = stage_str + 'd'
           end
         end
-        url = 'http://www.memoire-du-cyclisme.eu/eta_tdf_1978_2005/tdf1981_' + stage_str + '.php'
+        url = "#{prefix_url}tdf#{year}_#{stage_str }.php"
         #	url = 'http://www.memoire-du-cyclisme.net/eta_tdf_1978_2005/Mémoire du cyclisme_files/tdf1981_7.htm'
 
         #url = 'http://www.letour.fr/HISTO/fr/TDF/' + year.to_s + '/' + stage.to_s+'0'+sub.to_s+'/etape.html'
 
-        result = parse_result(url, year.to_s + ';' + stage.to_s + '.' + sub.to_s + ';')
+        result = parse_result(url, year, year.to_s + ';' + stage.to_s + '.' + sub.to_s + ';')
         if (result != nil) then
-          file.puts(result)
-          file.flush
+          # file.puts(result)
+          # file.flush
           if (search_sub) then
             sub = sub + 1
           elsif stage = stage + 1
@@ -172,12 +186,10 @@ class ImportUtils
             sub = sub + 1
           end
         end
-        sleep(1.0/8.0)
-
       end
     end
   end
 
-  ImportUtils.new.retrieve_year(1981)
+
 
 end
