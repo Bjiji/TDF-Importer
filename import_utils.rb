@@ -140,24 +140,31 @@ class ImportUtils
     # http://rubular.com/
     runner_regexp = /^([0-9]+)\s+([[[:upper:]]c\s\-\']+)\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+\(([[:upper:]][[:alpha:]]+)\).*/
 
-    runners = doc.xpath("//a[@name='partants']/following::text()[following-sibling::a[@name='etapes']]")
+    runners = doc.xpath("//a[@name='partants']/following::*[following-sibling::a[@name='etapes']]")
     output.puts "'year';'dossard';'lastname';'firstname';'nationality';'team'"
+    current_team = "<unknown>"
     runners.each do |node|
-      val=node.text.to_s.gsub('\n', '')
-      val.strip
-      tmp = val.split('µµ')
+      if (node.name == "strong" || node.name == "b") then
+        current_team = node.text
+        puts "#find new team #{current_team}"
+      else
+        val=node.text.to_s.gsub('\n', '')
+        val.strip
+        tmp = val.split('µµ')
 
-      tmp.each do |line|
-        line.strip!
-        line = line.gsub(/[[:space:]]/, ' ')
+        tmp.each do |line|
+          line.strip!
+          line = line.gsub(/[[:space:]]/, ' ')
 
-        if (line =~ runner_regexp) then
-          output.puts line.gsub(runner_regexp, '\1;\2;\3;\4')
-        else
-          if (line =~ /^([0-9]+)\s+/) then
-            puts "discard ? >#{line}<"
+          if (line =~ runner_regexp) then
+            output.puts line.gsub(runner_regexp, '\1;\2;\3;\4;') + "#{current_team}"
+          else
+            if (line =~ /^([0-9]+)\s+/) then
+              puts "discard ? >#{line}<"
+            else
+              # puts ">#{line}<"
+            end
           end
-
         end
       end
     end
