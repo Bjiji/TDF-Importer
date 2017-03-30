@@ -68,7 +68,7 @@ class ImportUtils
           last_pos = tmp.split(';')[0]
           last_dif = tmp.split(';')[3]
           output.puts prefix + tmp
-         # puts 'set last_pos to à >' + last_pos + '<'
+          # puts 'set last_pos to à >' + last_pos + '<'
         elsif (line =~ /^([0-9]+)\. ([^à]+) en ([0-9]+.*)/) then
           tmp = line.gsub(/^([0-9]+)\. ([^à]+) en ([0-9]+.*)/, '\1;\2;\3;')
           last_pos = tmp.split(';')[0]
@@ -110,23 +110,57 @@ class ImportUtils
     output.close()
   end
 
-    def get_prefix_url(year)
+  def get_prefix_url(year)
 
     if (year > 2013) then
-     'http://www.memoire-du-cyclisme.eu/eta_tdf_2014_2023/'
+      'http://www.memoire-du-cyclisme.eu/eta_tdf_2014_2023/'
     else
-     'http://www.memoire-du-cyclisme.eu/eta_tdf_2006/'
+      'http://www.memoire-du-cyclisme.eu/eta_tdf_2006/'
     end
   end
 
   def retrieve_year(year)
     prefix_url = get_prefix_url(year)
     get_generic_infos(prefix_url, year)
-    get_stages_infos(prefix_url, year)
+    #get_stages_infos(prefix_url, year)
   end
 
   def get_generic_infos(prefix_url, year)
+    File.open("race_runners-#{year}.txt", 'w+:UTF-8').close
+    output = File.open("race_runners-#{year}.txt", 'a:UTF-8')
+    url = "#{prefix_url}tdf#{year}.php"
+    get_url_resource(url)
 
+    html = get_url_resource(url)
+    doc = Nokogiri::HTML(html)
+    doc.encoding = 'utf-8'
+    doc.css('script, link', 'img').each { |node| node.remove }
+    doc.css('br').each { |node| node.replace('µµ') }
+
+    # http://rubular.com/
+    runner_regexp = /^([0-9]+)\s+([[[:upper:]]c\s\-\']+)\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+\(([[:upper:]][[:alpha:]]+)\).*/
+
+    runners = doc.xpath("//a[@name='partants']/following::text()[following-sibling::a[@name='etapes']]")
+    output.puts "'year';'dossard';'lastname';'firstname';'nationality';'team'"
+    runners.each do |node|
+      val=node.text.to_s.gsub('\n', '')
+      val.strip
+      tmp = val.split('µµ')
+
+      tmp.each do |line|
+        line.strip!
+        line = line.gsub(/[[:space:]]/, ' ')
+
+        if (line =~ runner_regexp) then
+          output.puts line.gsub(runner_regexp, '\1;\2;\3;\4')
+        else
+          if (line =~ /^([0-9]+)\s+/) then
+            puts "discard ? >#{line}<"
+          end
+
+        end
+      end
+    end
   end
 
   def get_stages_infos(prefix_url, year)
@@ -189,7 +223,6 @@ class ImportUtils
       end
     end
   end
-
 
 
 end
