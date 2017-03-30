@@ -140,7 +140,7 @@ class ImportUtils
     # http://rubular.com/
     runner_regexp = /^([0-9]+)\s+([[[:upper:]]c\s\-\']+)\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+\(([[:upper:]][[:alpha:]]+)\).*/
 
-    runners = doc.xpath("//a[@name='partants']/following::*[following-sibling::a[@name='etapes']]")
+    runners = doc.xpath("//a[@name='partants']/following::node()[following-sibling::a[@name='etapes']]")
     output.puts "'year';'dossard';'lastname';'firstname';'nationality';'team'"
     current_team = "<unknown>"
     runners.each do |node|
