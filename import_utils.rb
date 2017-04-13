@@ -1,9 +1,12 @@
-require 'rubygems'
 require 'nokogiri'
 require 'open-uri'
 require 'chronic_duration'
+require_relative 'my_sql_utils'
+require_relative 'nationality_utils'
 
 class ImportUtils
+
+  @@mu = MySQLUtils.new
 
   def get_url_resource(url)
     uri = URI(url)
@@ -127,7 +130,9 @@ class ImportUtils
 
   def get_generic_infos(prefix_url, year)
     File.open("race_runners-#{year}.txt", 'w+:UTF-8').close
-    output = File.open("race_runners-#{year}.txt", 'a:UTF-8')
+    output_race_runners = File.open("race_runners-#{year}.txt", 'a:UTF-8')
+    File.open("cyclists-#{year}.txt", 'w+:UTF-8').close
+    output_cyclists = File.open("cyclists-#{year}.txt", 'a:UTF-8')
     url = "#{prefix_url}tdf#{year}.php"
     get_url_resource(url)
 
@@ -140,13 +145,16 @@ class ImportUtils
     # http://rubular.com/
     runner_regexp = /^([0-9]+)\s+([[[:upper:]]c\s\-\']+)\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+\(([[:upper:]][[:alpha:]]+)\).*/
 
-    runners = doc.xpath("//a[@name='partants']/following::node()[following-sibling::a[@name='etapes']]")
-    output.puts "'year';'dossard';'lastname';'firstname';'nationality';'team'"
+    race_description = doc.xpath("//text()[preceding::b[u[text()='La petite histoire']]][following::a[@name='partants']]").text().gsub('µµ', '\n')
+    race = @@mu.getOrCreateRace(year, race_description);
+    runners = doc.xpath("//node()[preceding::a[@name='partants']][following-sibling::a[@name='etapes']]")
+    output_race_runners.puts "'year';'dossard';'lastname';'firstname';'nationality';'team'"
+    output_cyclists.puts "'lastname';'firstname';'nationality'"
     current_team = "<unknown>"
     runners.each do |node|
       if (node.name == "strong" || node.name == "b") then
         current_team = node.text
-        puts "#find new team #{current_team}"
+       # puts "#find new team #{current_team}"
       else
         val=node.text.to_s.gsub('\n', '')
         val.strip
@@ -157,7 +165,18 @@ class ImportUtils
           line = line.gsub(/[[:space:]]/, ' ')
 
           if (line =~ runner_regexp) then
-            output.puts line.gsub(runner_regexp, '\1;\2;\3;\4;') + "#{current_team}"
+            recordstr = line.gsub(runner_regexp, '\1\t\2\t\3\t\4\t')
+            record = recordstr.split('\t')
+            dossard = record[0].strip
+            lastname = record[1].strip
+            firstname = record[2].strip
+            nationality = NationalityUtils.normalizeNationality(record[3].strip)
+            if (firstname != nil && firstname.length > 1 && lastname != nil && lastname.length > 1 && dossard != nil && dossard.length > 0) then
+              @@mu.insertRaceRunner(year, dossard, lastname, firstname, nationality, current_team)
+            else
+              puts "bad format ? >#{line}<"
+            end
+
           else
             if (line =~ /^([0-9]+)\s+/) then
               puts "discard ? >#{line}<"

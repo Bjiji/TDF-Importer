@@ -1,0 +1,7 @@
+select * from cyclists c left join race_runners rr on rr.cyclist_id = c.id having rr.id is null;
+
+select * from mountain_stage_results where  leader_id is NULL;
+
+import stages (parcours)
+
+ig_race_result empty
