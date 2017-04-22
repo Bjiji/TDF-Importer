@@ -39,8 +39,8 @@ class ImportUtils
     html = get_url_resource(url)
     doc = Nokogiri::HTML(html)
     doc.encoding = 'utf-8'
-    doc.css('script, link', 'img').each { |node| node.remove }
-    doc.css('br').each { |node| node.replace('µµ') }
+    doc.css('script').each { |node| node.remove }
+#    doc.css('br').each { |node| node.replace('µµ') }
     result = ''
     valid = false
     ref_time=0
@@ -49,6 +49,17 @@ class ImportUtils
     res_time = []
     j = 0
     #doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
+    stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::a[@href=\"tdf2013.php\"]]").text().gsub("\n", "")
+    if (stage_str =~ /([\w-]*)-([\w-]*),\D+(\d+)\s+km\s+\((.*)\)/) then
+      sarr = stage_str.gsub(/([\w-]*)-([\w-]*),\D+(\d+)\s+km\s+\((.*)\)/, '\1;\2;\3;\4;').split(';')
+      sstart = sarr[0].squeeze(" ").strip
+      send = sarr[1].squeeze(" ").strip
+      sdist = sarr[2].squeeze(" ").strip
+      sdate = sarr[3].squeeze(" ").strip
+      # TODO resume here
+    else
+      puts "pb for stage #{stage_str}"
+    end
     tmp = doc.xpath("//td[@class='texte']")
     output = File.open("stage_results-#{year}.txt", 'a:UTF-8')
     output.puts "'year';'stage.sub';'pos';'runner_name';time;time_diff"
@@ -114,42 +125,60 @@ class ImportUtils
   end
 
   def get_prefix_url(year)
-
-    if (year > 2013) then
+    if (year >= 2014) then
       'http://www.memoire-du-cyclisme.eu/eta_tdf_2014_2023/'
-    else
+    elsif (year >= 2006) then
       'http://www.memoire-du-cyclisme.eu/eta_tdf_2006/'
+    elsif (year >= 1978) then
+      'http://www.memoire-du-cyclisme.eu/eta_tdf_1978_2005/'
+    elsif (year >= 1947) then
+     'http://www.memoire-du-cyclisme.eu/eta_tdf_1947_1977/'
+    else
+      'http://www.memoire-du-cyclisme.eu/eta_tdf_1903_1939/'
     end
   end
 
   def retrieve_year(year)
     prefix_url = get_prefix_url(year)
-    get_generic_infos(prefix_url, year)
-    #get_stages_infos(prefix_url, year)
+    #get_generic_infos(prefix_url, year)
+    get_stages_infos(prefix_url, year)
   end
 
   def get_generic_infos(prefix_url, year)
-    File.open("race_runners-#{year}.txt", 'w+:UTF-8').close
-    output_race_runners = File.open("race_runners-#{year}.txt", 'a:UTF-8')
-    File.open("cyclists-#{year}.txt", 'w+:UTF-8').close
-    output_cyclists = File.open("cyclists-#{year}.txt", 'a:UTF-8')
     url = "#{prefix_url}tdf#{year}.php"
     get_url_resource(url)
 
     html = get_url_resource(url)
     doc = Nokogiri::HTML(html)
     doc.encoding = 'utf-8'
-    doc.css('script, link', 'img').each { |node| node.remove }
+    doc.css('script, link').each { |node| node.remove }
     doc.css('br').each { |node| node.replace('µµ') }
 
     # http://rubular.com/
     runner_regexp = /^([0-9]+)\s+([[[:upper:]]c\s\-\']+)\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+\(([[:upper:]][[:alpha:]]+)\).*/
+    race_runner_result_regexp = /([0-9]+)\.\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+([[[:upper:]]c\s\-\']+)\(([[:upper:]][[:alpha:]]+)\)\s+en\s+([[:digit:]]+h[[:digit:]]+'[[:digit:]]+").*/
 
-    race_description = doc.xpath("//text()[preceding::b[u[text()='La petite histoire']]][following::a[@name='partants']]").text().gsub('µµ', '\n')
+    race_description = doc.xpath("//text()[preceding::b[u[text()='La petite histoire']]][following::a[@name='partants']]").text()
+
+
+    cgeneralstr = doc.xpath("//text()[preceding::img[@src='../images/tour_de_france/maillot_jaune.gif']][following::u[text()='Classement par points']]").text();
+    cgeneralstr.split('µµ').each do |line|
+      if ((line =~ race_runner_result_regexp)) then
+      line = line.gsub(race_runner_result_regexp, '\1\t\2\t\3\t\4\t\5').split('\t')
+      firstname = line[1].strip
+      lastname = line[2].strip
+      nationality = line[3].strip
+        puts line
+      else
+        puts "discard >#{line}<"
+      end
+    end
+
     race = @@mu.getOrCreateRace(year, race_description);
+
+
+
     runners = doc.xpath("//node()[preceding::a[@name='partants']][following-sibling::a[@name='etapes']]")
-    output_race_runners.puts "'year';'dossard';'lastname';'firstname';'nationality';'team'"
-    output_cyclists.puts "'lastname';'firstname';'nationality'"
     current_team = "<unknown>"
     runners.each do |node|
       if (node.name == "strong" || node.name == "b") then
@@ -176,7 +205,6 @@ class ImportUtils
             else
               puts "bad format ? >#{line}<"
             end
-
           else
             if (line =~ /^([0-9]+)\s+/) then
               puts "discard ? >#{line}<"
@@ -187,6 +215,7 @@ class ImportUtils
         end
       end
     end
+
   end
 
   def get_stages_infos(prefix_url, year)
