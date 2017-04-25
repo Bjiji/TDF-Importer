@@ -5,3 +5,5 @@ select * from mountain_stage_results where  leader_id is NULL;
 import stages (parcours)
 
 ig_race_result empty
+
+Type de stage (plaine, ITT, HMA, ...) à renseigner manuellement

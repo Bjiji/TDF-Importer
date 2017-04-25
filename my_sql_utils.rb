@@ -15,7 +15,7 @@ class MySQLUtils
 
   def getTeam(team, year)
     team = @@client.query("SELECT t.* FROM teams t WHERE trim(lower(t.name)) like trim(lower(\"#{mescape(team)}\"))")
-    if (team != nil  && team.size > 0) then
+    if (team != nil && team.size > 0) then
       team.first
     else
       nil
@@ -36,7 +36,7 @@ class MySQLUtils
     cyclist = @@client.query("SELECT c.* FROM cyclists c  WHERE c.lastname LIKE '#{mescape(lastname)}' AND c.firstname LIKE '#{mescape(firstname)}' AND exists (select 1 from race_runners rr where rr.cyclist_id = c.id and #{year} < rr.year + 5 AND #{year} > rr.year - 5)")
     if (cyclist.size > 1) then
       puts "'#{lastname}' - '#{firstname}' is ambiguous for year '#{year}':"
-      cyclist.each do | cyclist |
+      cyclist.each do |cyclist|
         puts cyclist
       end
       cyclist = nil
@@ -97,6 +97,51 @@ class MySQLUtils
       createRaceRunner(dossard, lastname, firstname, year, cyclist_id, team_id, race_id, nationality)
     end
     getRaceRunner(year, cyclist_id, team_id)
+  end
+
+  def getStage(race_id, stageNb, subStageNb)
+    result = @@client.query("SELECT s.* from stages s WHERE s.race_id = '#{race_id}' AND s.stageNb = '#{stageNb}' and s.subStageNb = '#{subStageNb}'")
+    if (result != nil && result.size > 0) then
+      result.first
+    else
+      nil
+    end
+  end
+
+  def createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
+    slocation = findMatchingStageLocation(sstart)
+    flocation = findMatchingStageLocation(send)
+    query = "insert into stages(date, start, finish, start_location, finish_location, stageNb, subStageNb, race_id, stage_type, year, distance, label, ordinal, info, start_location_proposal, finish_location_proposal) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (select name from stage_locations where id = '#{slocation}'), (select name from stage_locations where id = '#{flocation}'))"
+
+    begin
+      statement = @@client.prepare(query)
+      statement.execute(frenchToMySQLDate(sdate), sstart, send, slocation, flocation, stageNb, subStageNb, race_id, stage_type, year, sdist, "#{stageNb}.#{subStageNb}", ordinal, stage_details)
+    rescue Exception => e
+      puts query
+      puts e.message
+      puts e.backtrace.inspect
+    end
+    getStage(race_id, stageNb, subStageNb)
+  end
+
+  def findMatchingStageLocation(location)
+    result = @@client.query("SELECT s.id from stage_locations s WHERE LOWER(name) like LOWER(TRIM('#{mescape(location)}'))")
+    # if (result == nil || result.size == 0) then
+    #   result = @@client.query("SELECT s.id from stage_locations s WHERE LENGTH(name) = LENGTH(TRIM('#{mescape(location)}')) AND SOUNDEX(name) = SOUNDEX(TRIM('#{mescape(location)}'))")
+    # end
+    if (result != nil && result.size > 0) then
+      result.first['id']
+    else
+      nil
+    end
+  end
+
+  def frenchToMySQLDate(date)
+    if (date == nil)
+      nil
+    else
+      Date.parse(Utils.frenchToEnglishDate(date)).strftime('%Y-%m-%d')
+    end
   end
 
 end

@@ -34,12 +34,15 @@ class ImportUtils
     return html
   end
 
-  def parse_result(url, year, prefix)
+  def parse_result(url, year, ordinal, stageNb, subStageNb, prefix)
     puts 'working on ' + url
     html = get_url_resource(url)
+    if (html == nil)
+      return nil
+    end
     doc = Nokogiri::HTML(html)
     doc.encoding = 'utf-8'
-    doc.css('script').each { |node| node.remove }
+    doc.css('script').each {|node| node.remove}
 #    doc.css('br').each { |node| node.replace('µµ') }
     result = ''
     valid = false
@@ -48,18 +51,26 @@ class ImportUtils
     res_num = []
     res_time = []
     j = 0
-    #doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
+#doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
+    race_id = @@mu.getOrCreateRace(year, nil)['id']
     stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::a[@href=\"tdf2013.php\"]]").text().gsub("\n", "")
-    if (stage_str =~ /([\w-]*)-([\w-]*),\D+(\d+)\s+km\s+\((.*)\)/) then
-      sarr = stage_str.gsub(/([\w-]*)-([\w-]*),\D+(\d+)\s+km\s+\((.*)\)/, '\1;\2;\3;\4;').split(';')
+    stage_details = doc.xpath("//text()[preceding::img[@src=\"../images/fin.gif\"]][following::img[@src=\"../images/tour_de_france/profil.gif\"]]").text().squeeze(" ").strip
+    stage_desc_regex = /([\s'\w-]*)-(.*),\D+([\d\.]+)\s+km.*\((.*)\)/
+    if (stage_str =~ stage_desc_regex) then
+      sarr = stage_str.gsub(stage_desc_regex, '\1;\2;\3;\4;').split(';')
       sstart = sarr[0].squeeze(" ").strip
       send = sarr[1].squeeze(" ").strip
       sdist = sarr[2].squeeze(" ").strip
       sdate = sarr[3].squeeze(" ").strip
-      # TODO resume here
     else
       puts "pb for stage #{stage_str}"
     end
+    stage = @@mu.getStage(race_id, stageNb, subStageNb)
+    if (stage == nil) then
+      stage_type = detectStageType(doc)
+      stage = @@mu.createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
+    end
+
     tmp = doc.xpath("//td[@class='texte']")
     output = File.open("stage_results-#{year}.txt", 'a:UTF-8')
     output.puts "'year';'stage.sub';'pos';'runner_name';time;time_diff"
@@ -124,6 +135,10 @@ class ImportUtils
     output.close()
   end
 
+  def detectStageType(doc)
+    return "plaine ?"
+  end
+
   def get_prefix_url(year)
     if (year >= 2014) then
       'http://www.memoire-du-cyclisme.eu/eta_tdf_2014_2023/'
@@ -132,7 +147,7 @@ class ImportUtils
     elsif (year >= 1978) then
       'http://www.memoire-du-cyclisme.eu/eta_tdf_1978_2005/'
     elsif (year >= 1947) then
-     'http://www.memoire-du-cyclisme.eu/eta_tdf_1947_1977/'
+      'http://www.memoire-du-cyclisme.eu/eta_tdf_1947_1977/'
     else
       'http://www.memoire-du-cyclisme.eu/eta_tdf_1903_1939/'
     end
@@ -140,7 +155,7 @@ class ImportUtils
 
   def retrieve_year(year)
     prefix_url = get_prefix_url(year)
-    #get_generic_infos(prefix_url, year)
+    get_generic_infos(prefix_url, year)
     get_stages_infos(prefix_url, year)
   end
 
@@ -151,23 +166,24 @@ class ImportUtils
     html = get_url_resource(url)
     doc = Nokogiri::HTML(html)
     doc.encoding = 'utf-8'
-    doc.css('script, link').each { |node| node.remove }
-    doc.css('br').each { |node| node.replace('µµ') }
+    doc.css('script, link').each {|node| node.remove}
+    doc.css('br').each {|node| node.replace('µµ')}
 
     # http://rubular.com/
     runner_regexp = /^([0-9]+)\s+([[[:upper:]]c\s\-\']+)\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+\(([[:upper:]][[:alpha:]]+)\).*/
     race_runner_result_regexp = /([0-9]+)\.\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+([[[:upper:]]c\s\-\']+)\(([[:upper:]][[:alpha:]]+)\)\s+en\s+([[:digit:]]+h[[:digit:]]+'[[:digit:]]+").*/
 
-    race_description = doc.xpath("//text()[preceding::b[u[text()='La petite histoire']]][following::a[@name='partants']]").text()
+    race_description = doc.xpath("//text()[preceding::b[u[text()='La petite histoire']]][following::a[@name='partants']]").text().gsub("µµ", "\n").squeeze(" ").strip;
 
 
-    cgeneralstr = doc.xpath("//text()[preceding::img[@src='../images/tour_de_france/maillot_jaune.gif']][following::u[text()='Classement par points']]").text();
+    cgeneralstr = doc.xpath("//text()[preceding::img[@src='../images/tour_de_france/maillot_jaune.gif']][following::u[text()='Classement par points']]").text()
+
     cgeneralstr.split('µµ').each do |line|
       if ((line =~ race_runner_result_regexp)) then
-      line = line.gsub(race_runner_result_regexp, '\1\t\2\t\3\t\4\t\5').split('\t')
-      firstname = line[1].strip
-      lastname = line[2].strip
-      nationality = line[3].strip
+        line = line.gsub(race_runner_result_regexp, '\1\t\2\t\3\t\4\t\5').split('\t')
+        firstname = line[1].strip
+        lastname = line[2].strip
+        nationality = line[3].strip
         puts line
       else
         puts "discard >#{line}<"
@@ -177,13 +193,12 @@ class ImportUtils
     race = @@mu.getOrCreateRace(year, race_description);
 
 
-
     runners = doc.xpath("//node()[preceding::a[@name='partants']][following-sibling::a[@name='etapes']]")
     current_team = "<unknown>"
     runners.each do |node|
       if (node.name == "strong" || node.name == "b") then
         current_team = node.text
-       # puts "#find new team #{current_team}"
+        # puts "#find new team #{current_team}"
       else
         val=node.text.to_s.gsub('\n', '')
         val.strip
@@ -223,8 +238,9 @@ class ImportUtils
     File.open("stage_results-general-#{year}.txt", 'w+:UTF-8').close
     stage=1
     sub=0
+    ordinal = 1
     remaining_stage=true
-    while (stage < 25 && remaining_stage) do
+    while (remaining_stage) do
       begin
         search_sub = false
         result_found=false
@@ -254,7 +270,7 @@ class ImportUtils
 
         #url = 'http://www.letour.fr/HISTO/fr/TDF/' + year.to_s + '/' + stage.to_s+'0'+sub.to_s+'/etape.html'
 
-        result = parse_result(url, year, year.to_s + ';' + stage.to_s + '.' + sub.to_s + ';')
+        result = parse_result(url, year, ordinal, stage, sub, year.to_s + ';' + stage.to_s + '.' + sub.to_s + ';')
         if (result != nil) then
           # file.puts(result)
           # file.flush
@@ -275,6 +291,7 @@ class ImportUtils
             sub = sub + 1
           end
         end
+        ordinal += 1
       end
     end
   end

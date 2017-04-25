@@ -1,4 +1,6 @@
 require_relative 'import_utils'
+require_relative 'utils'
+require 'I18n'
 
 class Importer
   iu = ImportUtils.new
