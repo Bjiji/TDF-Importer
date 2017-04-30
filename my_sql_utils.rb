@@ -1,5 +1,6 @@
 require 'mysql2'
 require 'chronic_duration'
+require_relative 'nationality_utils'
 
 class MySQLUtils
 
@@ -57,6 +58,18 @@ class MySQLUtils
       result = @@client.query("SELECT r.* FROM races as r WHERE r.year = '#{year}'")
     end
     result.first
+  end
+
+  def getMatchingRaceRunner(year, cyclist_name, nationality)
+    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^a-z]','') AND rr.nationality = '#{NationalityUtils.normalizeNationality(nationality)}' and rr.year = '#{year}'")
+    if (runner == nil || runner.size == 0) then
+      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^a-z]','') AND rr.nationality = '#{NationalityUtils.normalizeNationality(nationality)}' and rr.year = '#{year}'")
+    end
+    if (runner != nil && runner.size > 0) then
+      runner.first
+    else
+      nil
+    end
   end
 
   def getRaceRunner(year, cyclist_id, team_id)
@@ -141,6 +154,34 @@ class MySQLUtils
       nil
     else
       Date.parse(Utils.frenchToEnglishDate(date)).strftime('%Y-%m-%d')
+    end
+  end
+
+  def create_ITE_stage_result(year, stage_id, position, runner_name, nationality, time_sec, diff_time_sec, dnf=nil, dns=nil, dnq=nil)
+    # TODO reprendre d'ici: insertion en base
+    # plus cas particulier "mt", et autres
+    # plus classement général
+
+    rr_id = nil
+    rr = getMatchingRaceRunner(year, runner_name, nationality)
+    if (rr != nil) then
+      rr_id = rr['id']
+      result = @@client.query("SELECT id from ite_stage_results s WHERE s.stage_id = #{stage_id} and s.race_runner_id = #{rr_id}")
+      if (result != nil && result.size > 0) then
+        puts "pb (duplicate) on year: #{year}, stage_id: #{stage_id}, position: #{position}, name: #{runner_name}, nationality: #{nationality}, time: #{Time.at(time_sec).utc.strftime("%H:%M:%S")}. discard"
+        return
+      end
+    else
+      puts "pb no runner found on year: #{year}, stage_id: #{stage_id}, position: #{position}, name: #{runner_name}, nationality: #{nationality}, time: #{Time.at(time_sec).utc.strftime("%H:%M:%S")}. nil instead"
+    end
+    query = "insert into ite_stage_results(stage_id, race_runner_id, pos, dns, dnf, dnq, year, diff_time_sec, time_sec, _confidence, runner_s) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    begin
+      statement = @@client.prepare(query)
+      statement.execute(stage_id, rr_id, position, dns, dnf, dnq, year, diff_time_sec, time_sec, "importer.rb @ #{Time.new}", runner_name)
+    rescue Exception => e
+      puts query
+      puts e.message
+      puts e.backtrace.inspect
     end
   end
 

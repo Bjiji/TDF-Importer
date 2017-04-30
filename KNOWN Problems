@@ -2,6 +2,10 @@ select * from cyclists c left join race_runners rr on rr.cyclist_id = c.id havin
 
 select * from mountain_stage_results where  leader_id is NULL;
 
+-- cyclist apparaisant 2 fois dans une étape à des positions différentes : ~350 cas:
+select distinct count(1), s.id, race_runner_id, count(DISTINCT pos), s.label, s.year from ite_stage_results ite join stages s on s.id = ite.stage_id  and not(race_runner_id is null)
+group by stage_id, race_runner_id having count(1) > 1 and count(DISTINCT pos) > 1 limit 1000;
+
 import stages (parcours)
 
 ig_race_result empty

@@ -6,6 +6,8 @@ require_relative 'nationality_utils'
 
 class ImportUtils
 
+  NBSP_CHAR = 160.chr(Encoding::UTF_8)
+
   @@mu = MySQLUtils.new
 
   def get_url_resource(url)
@@ -14,7 +16,7 @@ class ImportUtils
     filename = 'cache' + path
     if File.exist?(filename) then
       puts 'using cache for resource'
-      html = File.open(filename, 'r:UTF-8').read
+      html = File.open(filename, 'r:iso-8859-1').read
     else
       begin
         print 'downloading resource... '
@@ -23,7 +25,7 @@ class ImportUtils
         unless File.directory?(dirname)
           FileUtils.mkdir_p(dirname)
         end
-        File.open(filename, 'a:UTF-8').puts html
+        File.open(filename, 'a:iso-8859-1').puts html
         sleep(1.0/8.0)
         puts 'done'
       rescue OpenURI::HTTPError => e
@@ -41,9 +43,10 @@ class ImportUtils
       return nil
     end
     doc = Nokogiri::HTML(html)
-    doc.encoding = 'utf-8'
+    #nbsp = Nokogiri::HTML("&nbsp;").text
+    doc.encoding = 'UTF-8'
     doc.css('script').each {|node| node.remove}
-#    doc.css('br').each { |node| node.replace('µµ') }
+    doc.css('br').each { |node| node.replace('µµ') }
     result = ''
     valid = false
     ref_time=0
@@ -53,8 +56,8 @@ class ImportUtils
     j = 0
 #doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
     race_id = @@mu.getOrCreateRace(year, nil)['id']
-    stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::a[@href=\"tdf2013.php\"]]").text().gsub("\n", "")
-    stage_details = doc.xpath("//text()[preceding::img[@src=\"../images/fin.gif\"]][following::img[@src=\"../images/tour_de_france/profil.gif\"]]").text().squeeze(" ").strip
+    stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::a[@href=\"tdf2013.php\"]]").text().gsub("\n", "").squeeze(" ").gsub("µ", "").strip
+    stage_details = doc.xpath("//text()[preceding::img[@src=\"../images/fin.gif\"]][following::img[@src=\"../images/tour_de_france/profil.gif\"]]").text().squeeze(" ").gsub("µ", "").strip
     stage_desc_regex = /([\s'\w-]*)-(.*),\D+([\d\.]+)\s+km.*\((.*)\)/
     if (stage_str =~ stage_desc_regex) then
       sarr = stage_str.gsub(stage_desc_regex, '\1;\2;\3;\4;').split(';')
@@ -70,43 +73,67 @@ class ImportUtils
       stage_type = detectStageType(doc)
       stage = @@mu.createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
     end
-
+    stage_id = stage['id'];
     tmp = doc.xpath("//td[@class='texte']")
-    output = File.open("stage_results-#{year}.txt", 'a:UTF-8')
-    output.puts "'year';'stage.sub';'pos';'runner_name';time;time_diff"
-    last_dif = ''
+    last_dif = 0
     last_pos = '?'
+    last_time = 0
     tmp.each do |node|
-      val=node.text.to_s.gsub('\n', '')
+      val=node.text.to_s.gsub('\n', ' ')
       val.strip
       tmp = val.split('µµ')
 
+
+      handler = self.method(:classementEtapeLineHandler)
       tmp.each do |line|
-        line.strip!
-        line = line.gsub(/[[:space:]]/, ' ')
+        line = line.gsub(NBSP_CHAR, ' ').gsub(/\s+/, ' ').strip
         if (line.include?('Classement général :')) then
-          output.flush()
-          output.close()
-          output = File.open("stage_results-general-#{year}.txt", 'a:UTF-8')
-        elsif (line =~ /^([0-9]+)\. ([^à]+) à ([0-9]+.*)/) then
-          tmp = line.gsub(/^([0-9]+)\. ([^à]+) à ([0-9]+.*)/, '\1;\2;;\3')
-          last_pos = tmp.split(';')[0]
-          last_dif = tmp.split(';')[3]
-          output.puts prefix + tmp
+          handler = self.method(:classementGeneralLineHandler)
+        elsif (line.include?('Classement général par points')) then
+          handler = self.method(:discardLineHandler)
+        end
+
+        patternTime = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "1. Marcel Kittel (All) en 4h56'52" (moy : 43.050 km/h)" avec nat, heure et minute optionnelle
+        patternDelay = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
+        patternSameTime1 = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
+
+        if (false) then
+        elsif (line =~ patternDelay) then
+          captures = line.match(patternDelay).captures
+          position = captures[0]
+          rr_name = captures[1]
+          nationality = captures[2]
+          last_diff = Utils.strDurationToSec(captures[3], captures[4], captures[5])
+          time =  last_diff + last_time
+          last_pos = position
+          handler.call(year, stage_id, position, rr_name, nationality, time, last_diff)
           # puts 'set last_pos to à >' + last_pos + '<'
-        elsif (line =~ /^([0-9]+)\. ([^à]+) en ([0-9]+.*)/) then
-          tmp = line.gsub(/^([0-9]+)\. ([^à]+) en ([0-9]+.*)/, '\1;\2;\3;')
-          last_pos = tmp.split(';')[0]
-          last_dif = ''
-          output.puts prefix + tmp
+        elsif (line =~ patternTime) then
+          captures = line.match(patternTime).captures
+          position = captures[0]
+          rr_name = captures[1]
+          nationality = captures[2]
+          time = Utils.strDurationToSec(captures[3], captures[4], captures[5])
+          last_diff = last_time == 0 ? 0 : last_time - time
+          last_time = time
+          last_pos = position
+          handler.call(year, stage_id, position, rr_name, nationality, time, last_diff)
+          # resume here (add other pattern, exploit them)
+          # last_pos = tmp.split(';')[0]
+          # last_dif = ''
+          # output.puts prefix + tmp
           # puts 'set last_pos to en >' + last_pos + '<'
-        elsif (line =~ /^([0-9]+)\. (.*)/) then
-          tmp = line.gsub(/^([0-9]+)\. (.*)/, '\1;\2;;' + last_dif)
-          last_pos = tmp.split(';')[0]
-          output.puts prefix + tmp
+        elsif (line =~ patternSameTime1) then
+          captures = line.match(patternSameTime1).captures
+          position = captures[0]
+          rr_name = captures[1]
+          nationality = captures[2]
+          last_pos = position
+          time = last_time + last_dif
+          handler.call(year, stage_id, position, rr_name, nationality, time, last_diff)
           # puts 'set last_pos to >' + last_pos + '<'
         elsif (line =~ /^[ ][ ]+(.*)/) then
-          output.puts prefix + line.gsub(/^[ ][ ]+(.*)/, last_pos + ';\1;;' + last_dif)
+          raise "#{line} not handle anymore"
         else
           puts 'unable to parse: ' + '>' + line + '<'
         end
@@ -169,6 +196,7 @@ class ImportUtils
     doc.css('script, link').each {|node| node.remove}
     doc.css('br').each {|node| node.replace('µµ')}
 
+
     # http://rubular.com/
     runner_regexp = /^([0-9]+)\s+([[[:upper:]]c\s\-\']+)\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+\(([[:upper:]][[:alpha:]]+)\).*/
     race_runner_result_regexp = /([0-9]+)\.\s+([[:upper:]][[[:alpha:]]\'\-\s]+)\s+([[[:upper:]]c\s\-\']+)\(([[:upper:]][[:alpha:]]+)\)\s+en\s+([[:digit:]]+h[[:digit:]]+'[[:digit:]]+").*/
@@ -201,7 +229,6 @@ class ImportUtils
         # puts "#find new team #{current_team}"
       else
         val=node.text.to_s.gsub('\n', '')
-        val.strip
         tmp = val.split('µµ')
 
         tmp.each do |line|
@@ -234,13 +261,12 @@ class ImportUtils
   end
 
   def get_stages_infos(prefix_url, year)
-    File.open("stage_results-#{year}.txt", 'w+:UTF-8').close
-    File.open("stage_results-general-#{year}.txt", 'w+:UTF-8').close
+
     stage=1
     sub=0
     ordinal = 1
     remaining_stage=true
-    while (remaining_stage) do
+    while (remaining_stage && ordinal < 2) do
       begin
         search_sub = false
         result_found=false
@@ -296,5 +322,15 @@ class ImportUtils
     end
   end
 
+  def classementGeneralLineHandler(year, stage_id, position, rr_name, nationality, time, last_diff)
+    # puts "général: #{line}"
+  end
 
+  def classementEtapeLineHandler(year, stage_id, position, rr_name, nationality, time, last_diff)
+    @@mu.create_ITE_stage_result(year, stage_id, position, rr_name, nationality, time, last_diff)
+  end
+
+  def discardLineHandler(year, stage_id, position, rr_name, nationality, time, last_diff)
+    puts "discard: #{position}"
+  end
 end
