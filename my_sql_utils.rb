@@ -60,10 +60,10 @@ class MySQLUtils
     result.first
   end
 
-  def getMatchingRaceRunner(year, cyclist_name, nationality)
-    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^a-z]','') AND rr.nationality = '#{NationalityUtils.normalizeNationality(nationality)}' and rr.year = '#{year}'")
+  def getMatchingRaceRunner(year, cyclist_name)
+    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^a-z]','') and rr.year = '#{year}'")
     if (runner == nil || runner.size == 0) then
-      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^a-z]','') AND rr.nationality = '#{NationalityUtils.normalizeNationality(nationality)}' and rr.year = '#{year}'")
+      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^a-z]','') and rr.year = '#{year}'")
     end
     if (runner != nil && runner.size > 0) then
       runner.first
@@ -157,27 +157,104 @@ class MySQLUtils
     end
   end
 
-  def create_ITE_stage_result(year, stage_id, position, runner_name, nationality, time_sec, diff_time_sec, dnf=nil, dns=nil, dnq=nil)
-    # TODO reprendre d'ici: insertion en base
-    # plus cas particulier "mt", et autres
-    # plus classement général
-
+  def create_ITE_stage_result(year, stage_id, position, runner_name, nationality, time_sec, diff_time_sec, dns=nil, dnf=nil, dnq=nil)
     rr_id = nil
-    rr = getMatchingRaceRunner(year, runner_name, nationality)
+    rr = getMatchingRaceRunner(year, runner_name)
     if (rr != nil) then
       rr_id = rr['id']
       result = @@client.query("SELECT id from ite_stage_results s WHERE s.stage_id = #{stage_id} and s.race_runner_id = #{rr_id}")
       if (result != nil && result.size > 0) then
-        puts "pb (duplicate) on year: #{year}, stage_id: #{stage_id}, position: #{position}, name: #{runner_name}, nationality: #{nationality}, time: #{Time.at(time_sec).utc.strftime("%H:%M:%S")}. discard"
+        puts "pb (duplicate) on year: #{year}, stage_id: #{stage_id}, position: #{position}, name: #{runner_name}, nationality: #{nationality}, time: #{time_sec ? Time.at(time_sec).utc.strftime("%H:%M:%S") : nil}. discard"
         return
       end
     else
-      puts "pb no runner found on year: #{year}, stage_id: #{stage_id}, position: #{position}, name: #{runner_name}, nationality: #{nationality}, time: #{Time.at(time_sec).utc.strftime("%H:%M:%S")}. nil instead"
+      puts "pb no runner found on year: #{year}, stage_id: #{stage_id}, position: #{position}, name: #{runner_name}, nationality: #{nationality}, time: #{time_sec ? Time.at(time_sec).utc.strftime("%H:%M:%S") : nil}. nil instead"
     end
     query = "insert into ite_stage_results(stage_id, race_runner_id, pos, dns, dnf, dnq, year, diff_time_sec, time_sec, _confidence, runner_s) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     begin
       statement = @@client.prepare(query)
-      statement.execute(stage_id, rr_id, position, dns, dnf, dnq, year, diff_time_sec, time_sec, "importer.rb @ #{Time.new}", runner_name)
+      statement.execute(stage_id, rr_id, position, dns ? 1 : nil, dnf ? 1 : nil, dnq ? 1 : nil, year, diff_time_sec, time_sec, "importer.rb @ #{Time.new}", runner_name)
+    rescue Exception => e
+      puts query
+      puts e.message
+      puts e.backtrace.inspect
+    end
+  end
+
+  def create_IG_stage_result(year, stage_id, stage_winner_str, jersey_str, sprint_str, mountain_str, young_str, team_str, combat_str)
+    result = @@client.query("SELECT id from ig_stage_results s WHERE s.stage_id = #{stage_id} and s.year = #{year}")
+    if (result != nil && result.size > 0) then
+      puts "pb (duplicate) on year: #{year}, stage_id: #{stage_id}. discard"
+      return
+    end
+    if (stage_winner_str != nil) then
+      stage_winner= getMatchingRaceRunner(year, stage_winner_str)
+      if (stage_winner == nil) then
+        puts "pb winner not found on year: #{year}, stage_id: #{stage_winner_str}. nil instead"
+        stage_winner_id = nil
+      else
+        stage_winner_id = stage_winner['id']
+      end
+    end
+    if (jersey_str != nil) then
+      jersey_winner= getMatchingRaceRunner(year, jersey_str)
+      if (jersey_winner == nil) then
+        puts "pb jersey not found on year: #{year}, stage_id: #{jersey_str}. nil instead"
+        jersey_winner_id = nil
+      else
+        jersey_winner_id = jersey_winner['id']
+      end
+    end
+    if (sprint_str != nil) then
+      sprint_winner= getMatchingRaceRunner(year, sprint_str)
+      if (sprint_winner == nil) then
+        puts "pb sprint not found on year: #{year}, stage_id: #{sprint_str}. nil instead"
+        sprint_winner_id = nil
+      else
+        sprint_winner_id = sprint_winner['id']
+      end
+    end
+    if (mountain_str != nil) then
+      mountain_winner= getMatchingRaceRunner(year, mountain_str)
+      if (mountain_winner == nil) then
+        puts "pb mountain not found on year: #{year}, stage_id: #{mountain_str}. nil instead"
+        mountain_winner_id = nil
+      else
+        mountain_winner_id = mountain_winner['id']
+      end
+    end
+    if (young_str != nil) then
+      young_winner= getMatchingRaceRunner(year, young_str)
+      if (young_winner == nil) then
+        puts "pb young not found on year: #{year}, stage_id: #{young_str}. nil instead"
+        young_winner_id = nil
+      else
+        young_winner_id = young_winner['id']
+      end
+    end
+    if (team_str != nil) then
+      team_winner= getTeam(team_str, year)
+      if (team_winner == nil) then
+        puts "pb team not found on year: #{year}, stage_id: #{team_str}. nil instead"
+        team_winner_id = nil
+      else
+        team_winner_id = team_winner['id']
+      end
+    end
+    if (combat_str != nil) then
+      combat_winner= getMatchingRaceRunner(year, combat_str)
+      if (combat_winner == nil) then
+        puts "pb combat not found on year: #{year}, stage_id: #{combat_str}. nil instead"
+        combat_winner_id = nil
+      else
+        combat_winner_id = combat_winner['id']
+      end
+    end
+
+    query = "insert into ig_stage_results(stage_id, stage_winner_id, leader_id, sprinter_id, climber_id, team_id, young_id, stage_combat_id, stage_winner_s, leader_s, sprinter_s, climber_s, team_s, young_s, stage_combat_s, year) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    begin
+      statement = @@client.prepare(query)
+      statement.execute(stage_id, stage_winner_id, jersey_winner_id, sprint_winner_id, mountain_winner_id, team_winner_id, young_winner_id, combat_winner_id, stage_winner_str, jersey_str, sprint_str, mountain_str, team_str, young_str, combat_str, year)
     rescue Exception => e
       puts query
       puts e.message

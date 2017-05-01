@@ -11,3 +11,25 @@ import stages (parcours)
 ig_race_result empty
 
 Type de stage (plaine, ITT, HMA, ...) à renseigner manuellement
+
+script pour calculer / mettre à jour les previous_stage_winner, ... dans ig_stage_results
+
+incapable d'importer des TTT pour l'instant ni les ITT !!
+
+stages.route (itinéraire) n'est pas exploité dans le UI
+
+extras infos des stages pas insérer (ce qui commence par *)
+
+RESUME HERE: maillots distinctifs ne marchent pas !! (2013)
+
+TODO:
+
+stage_status =~ dnf, dns, dnq
+TTT
+ITT
+passage de cols
+classement finaux (possible manuellement)
+classement général
+classification des étapes (montagne, plaine, ...)
+preivous_winner (scripts)
+affichage équipe /team/3221
