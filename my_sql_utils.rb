@@ -262,4 +262,44 @@ class MySQLUtils
     end
   end
 
+  def getOrCreateMountain(year, stage_id, winner_str, col_str, col_cat, col_pos, km)
+    existing = @@client.query( "select id from mountain_stage_results where stage_id = #{stage_id} and `order` = #{col_pos}")
+    if (existing != nil && existing.size > 0) then
+      puts "discard existing msr"
+    else
+      winner = getMatchingRaceRunner(year, winner_str)
+      if (winner != nil) then
+        winner_id = winner['id']
+      end
+      altitude = getLastMatchingAltitudeMountain(col_str)
+      finish = isFinish(stage_id, km)
+      query = "insert into mountain_stage_results(stage_id, `order`, name, leader_id, finish, category_s, leader_s, altitude, year) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      begin
+        statement = @@client.prepare(query)
+        statement.execute(stage_id, col_pos, col_str, winner_id, finish, col_cat, winner_str, altitude, year)
+      rescue Exception => e
+        puts query
+        puts e.message
+        puts e.backtrace.inspect
+      end
+    end
+  end
+
+  def isFinish(stage_id, km)
+    tmp = @@client.query("select (ABS(distance - #{km}) < 1) as finish from stages where id = #{stage_id}").first
+    if (tmp == nil) then
+      0
+    else
+      tmp['finish']
+    end
+  end
+
+  def getLastMatchingAltitudeMountain(col_str)
+    tmp = @@client.query("SELECT altitude FROM mountain_stage_results m WHERE REGEXP_REPLACE(lower(m.name), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(col_str)}')), '[^a-z]','') and not(altitude is null) order by m.year limit 1").first
+    if (tmp == nil) then
+      nil
+    elsif tmp['altitude']
+    end
+  end
+
 end

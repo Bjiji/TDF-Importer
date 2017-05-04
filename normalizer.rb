@@ -64,6 +64,9 @@ class Normalizer
     end
   end
 
-  enforcePreviousStageInfos(2015)
+  for i in 2013..2016
+    enforcePreviousStageInfos(i)
+  end
+
 
 end
