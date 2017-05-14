@@ -1,11 +1,15 @@
 require_relative 'import_utils'
 require_relative 'utils'
+require_relative 'normalizer'
 require 'I18n'
 
 class Importer
   iu = ImportUtils.new
-  iu.retrieve_year(2013)
-  iu.retrieve_year(2014)
-  iu.retrieve_year(2015)
-  iu.retrieve_year(2016)
+  for year in 2001..2016
+  # iu.retrieve_year(year)
+  # Normalizer.enforcePreviousStageInfos(year)
+  # Normalizer.updateStageType(year)
+  # Normalizer.updateFirstLastStage(year)
+   Normalizer.updateDistanceSpeed(year)
+  end
 end

@@ -8,11 +8,11 @@ group by stage_id, race_runner_id having count(1) > 1 and count(DISTINCT pos) > 
 
 import stages (parcours)
 
-ig_race_result empty
+ok ig_race_result empty
 
-Type de stage (plaine, ITT, HMA, ...) à renseigner manuellement
+ok Type de stage (plaine, ITT, HMA, ...) à renseigner manuellement
 
-script pour calculer / mettre à jour les previous_stage_winner, ... dans ig_stage_results
+ok script pour calculer / mettre à jour les previous_stage_winner, ... dans ig_stage_results
 
 incapable d'importer des TTT pour l'instant ni les ITT !!
 
@@ -26,11 +26,11 @@ TODO:
 
 stage_status =~ dnf, dns, dnq
 TTT
-ITT
-passage de cols
-classement finaux (possible manuellement)
-classement général
-classification des étapes (montagne, plaine, ...)
+ok ITT
+ok passage de cols
+ok classement finaux (possible manuellement)
+ok classement général
+ok classification des étapes (montagne, plaine, ...)
 
 unable to parse: >* Tony Martin est non-partant suite à une fracture de la clavicule survenue dans une chute la veille. Christopher Froome devient alors 1er du classement général mais décide de ne pas porter le maillot jaune en hommage au coureur allemand.<
 
