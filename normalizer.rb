@@ -139,10 +139,13 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
     end
     stage_id = MySQLUtils.getLastStage(year)['id']
     winner_res = @@client.query("select * from yj_stage_results where stage_id  = '#{stage_id}' and pos = 1").first
-    time = winner_res['time_sec']
-    averageSpeed = (distance * 1.0 / (time / 60 / 60)).round(1)
+    if (winner_res != nil)
+      time = winner_res['time_sec']
+      averageSpeed = (distance * 1.0 / (time / 60 / 60)).round(1)
 
-    @@client.query("update races set distance = '#{distance}', averageSpeed = '#{averageSpeed}' where year = #{year}")
+      @@client.query("update races set distance = '#{distance}', averageSpeed = '#{averageSpeed}' where year = #{year}")
+    end
+
   end
 
   for i in 2013..2016

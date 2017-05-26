@@ -32,5 +32,7 @@ ok classement finaux (possible manuellement)
 ok classement général
 ok classification des étapes (montagne, plaine, ...)
 
+Sorting des columns (datatable stype = num-html) ne se fait pas. Il manque les plugins de sort ?
+
 unable to parse: >* Tony Martin est non-partant suite à une fracture de la clavicule survenue dans une chute la veille. Christopher Froome devient alors 1er du classement général mais décide de ne pas porter le maillot jaune en hommage au coureur allemand.<
 

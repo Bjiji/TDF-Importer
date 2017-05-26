@@ -61,9 +61,9 @@ class MySQLUtils
   end
 
   def self.getMatchingRaceRunner(year, cyclist_name)
-    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^a-z]','') and rr.year = '#{year}'")
+    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^[:alpha:]]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]','') collate utf8_general_ci and rr.year = '#{year}'")
     if (runner == nil || runner.size == 0) then
-      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^a-z]','') and rr.year = '#{year}'")
+      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^[:alpha:]]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]','') collate utf8_general_ci and rr.year = '#{year}'")
     end
     if (runner != nil && runner.size > 0) then
       runner.first
@@ -86,7 +86,17 @@ class MySQLUtils
     @@client.last_id
   end
 
-  def self.insertRaceRunner(year, dossard, lastname, firstname, nationality, team_name)
+  def self.getOrCreateRaceRunner(year, dossard, lastname, firstname, nationality, team_name)
+    rr = getMatchingRaceRunner(year, firstname + ' ' + lastname)
+    if (rr != nil) then
+      return rr
+    else
+      rr = getDossard(year, dossard)
+      if (rr != nil)
+        puts "> match between '#{firstname} #{lastname}' and '#{rr['firstname']} #{rr['lastname']}' for year #{year} and dossard #{dossard} ?"
+        return rr
+      end
+      end
     cyclist_id = nil
     cyclist = getExactMatchCyclist(lastname, firstname, year)
     if (cyclist == nil) then
@@ -112,6 +122,15 @@ class MySQLUtils
     getRaceRunner(year, cyclist_id, team_id)
   end
 
+  def self.getDossard(year, dossard)
+    result = @@client.query("SELECT rr.* from race_runners rr WHERE rr.year = '#{year}' AND rr.number = #{dossard}")
+    if (result != nil && result.size > 0) then
+      result.first
+    else
+      nil
+    end
+  end
+
   def self.getStage(race_id, stageNb, subStageNb)
     result = @@client.query("SELECT s.* from stages s WHERE s.race_id = '#{race_id}' AND s.stageNb = '#{stageNb}' and s.subStageNb = '#{subStageNb}'")
     if (result != nil && result.size > 0) then
@@ -121,10 +140,14 @@ class MySQLUtils
     end
   end
 
+  def self.addInfosToStage(stage_id, stage_info)
+    @@client.query("UPDATE stages set info = CONCAT(IFNULL(CONCAT(info, '\n'),''), '#{mescape(stage_info)}') WHERE id = '#{stage_id}'")
+  end
+
   def self.createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
     slocation = findMatchingStageLocation(sstart)
     flocation = findMatchingStageLocation(send)
-    query = "insert into stages(date, start, finish, start_location, finish_location, stageNb, subStageNb, race_id, stage_type, year, distance, label, ordinal, info, start_location_proposal, finish_location_proposal) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (select name from stage_locations where id = '#{slocation}'), (select name from stage_locations where id = '#{flocation}'))"
+    query = "insert into stages(date, start, finish, start_location, finish_location, stageNb, subStageNb, race_id, stage_type, year, distance, label, ordinal, route, start_location_proposal, finish_location_proposal) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (select name from stage_locations where id = '#{slocation}'), (select name from stage_locations where id = '#{flocation}'))"
 
     begin
       statement = @@client.prepare(query)
@@ -287,9 +310,9 @@ class MySQLUtils
   end
 
   def self.create_IG_race_result(year, race_id, jersey_str, sprint_str, mountain_str, young_str, team_str, combat_str)
-    result = @@client.query("SELECT id from ig_stage_results s WHERE s.stage_id = #{race_id} and s.year = #{year}")
+    result = @@client.query("SELECT id from ig_race_results s WHERE s.race_id = #{race_id} and s.year = #{year}")
     if (result != nil && result.size > 0) then
-      puts "pb (duplicate ig) on year: #{year}, stage_id: #{race_id}. discard"
+      puts "pb (duplicate ig) on year: #{year}, race_id: #{race_id}. discard"
       return
     end
     if (jersey_str != nil) then
@@ -350,9 +373,9 @@ class MySQLUtils
   end
 
   def self.create_IG_race_result_ids(year, race_id, leader_id, sprinter_id, climber_id, team_id, young_id, combine_id, overall_id)
-    result = @@client.query("SELECT id from ig_stage_results s WHERE s.stage_id = #{race_id} and s.year = #{year}")
+    result = @@client.query("SELECT id from ig_race_results r WHERE r.race_id = #{race_id} and r.year = #{year}")
     if (result != nil && result.size > 0) then
-      puts "pb (duplicate ig) on year: #{year}, stage_id: #{race_id}. discard"
+      puts "pb (duplicate ig) on year: #{year}, race_id: #{race_id}. discard"
       return
     end
 
@@ -400,7 +423,7 @@ class MySQLUtils
   end
 
   def self.getLastMatchingAltitudeMountain(col_str)
-    tmp = @@client.query("SELECT altitude FROM mountain_stage_results m WHERE REGEXP_REPLACE(lower(m.name), '[^a-z]','') like  REGEXP_REPLACE(lower(trim('#{mescape(col_str)}')), '[^a-z]','') and not(altitude is null) order by m.year limit 1").first
+    tmp = @@client.query("SELECT altitude FROM mountain_stage_results m WHERE REGEXP_REPLACE(lower(m.name), '[^[:alpha:]]','') like  REGEXP_REPLACE(lower(trim('#{mescape(col_str)}')), '[^[:alpha:]]','') collate utf8_general_ci and not(altitude is null) order by m.year limit 1").first
     if (tmp == nil) then
       nil
     elsif tmp['altitude']

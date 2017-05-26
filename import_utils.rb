@@ -1,6 +1,7 @@
 require 'nokogiri'
 require 'open-uri'
 require 'chronic_duration'
+require 'unicode'
 require_relative 'my_sql_utils'
 require_relative 'nationality_utils'
 
@@ -72,12 +73,13 @@ class ImportUtils
     patternDelay = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
     patternSameTime1 = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
     patterTeamTTT = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
-
+    stage_desc_regex = /(?:([\s'\w-\(\)]*)-)?(.*),\D+([\d\.]+)\s+km.*\((.*)\)/
+    extraInfosPattern = /^\*\s+(.*)/
     #doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
     race_id = MySQLUtils.getOrCreateRace(year, nil)['id']
-    stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::a[@href=\"tdf2013.php\"]]").text().gsub("\n", "").squeeze(" ").gsub("µ", "").strip
+    stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::a[@href=\"tdf#{year}.php\"]]").text().gsub("\n", "").squeeze(" ").gsub("µ", "").strip
     stage_details = doc.xpath("//text()[preceding::img[@src=\"../images/fin.gif\"]][following::img[@src=\"../images/tour_de_france/profil.gif\"]]").text().squeeze(" ").gsub("µ", "").strip
-    stage_desc_regex = /([\s'\w-\(\)]*)-(.*),\D+([\d\.]+)\s+km.*\((.*)\)/
+
     if (stage_str == nil || stage_str.size == 0) then
       aaa = doc.xpath("//td[@class='texte']").text()
       val=aaa.to_s.gsub("\n", " ").squeeze(" ").gsub(commentPattern, "")
@@ -98,15 +100,20 @@ class ImportUtils
       send = sarr[1].squeeze(" ").strip
       sdist = sarr[2].squeeze(" ").strip
       sdate = sarr[3].squeeze(" ").strip
+      if (sstart == nil || sstart == "")
+        sstart == send
+      end
       is_TTT_stage = stage_str =~ /CLM par équipes/
     else
       raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No def found : >#{stage_str}<"
     end
+
     stage = MySQLUtils.getStage(race_id, stageNb, subStageNb)
     if (stage == nil) then
       stage_type = detectStageType(doc)
       stage = MySQLUtils.createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
     end
+
     stage_id = stage['id'];
     tmp = doc.xpath("//td[@class='texte']")
     # TODO: on ne parse pas résultat montagne, maillot vert, etc... ce qui empêche de remplir ig_stage_result
@@ -161,7 +168,7 @@ class ImportUtils
         elsif (line.include?('Classement général par équipes :')) then
           mode = 'team'
         elsif (line.include?('Prix de la combativité : ')) then
-          combat_str = line.match(/:\W([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/).captures[0]
+          combat_str = line.match(/:\W*(?:\d+\.)?\W*([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/).captures[0]
         elsif (mode == 'cols' && line =~ patternCol) then
           col_pos += 1
           col_km = line.match(patternCol).captures[0]
@@ -185,7 +192,7 @@ class ImportUtils
           elsif (mode == 'team' && team_str == nil) then
             team_str = winner
           elsif (col_str != nil && mode == 'cols') then
-            MySQLUtils.getOrCreateMountain(year, stage_id, winner, col_str, col_cat, col_pos, col_km)
+            MySQLUtils.getOrCreateMountain(year, stage_id, normalize_name(winner), col_str, col_cat, col_pos, col_km)
           end
         end
 
@@ -198,7 +205,7 @@ class ImportUtils
           last_dif = Utils.strDurationToSec(captures[3], captures[4], captures[5])
           time = last_dif + last_time
           last_pos = position
-          handler.call(year, stage_id, position, rr_name, nationality, time, last_dif)
+          handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
           # puts 'set last_pos to à >' + last_pos + '<'
         elsif (line =~ patternTime) then
           captures = line.match(patternTime).captures
@@ -209,7 +216,7 @@ class ImportUtils
           last_dif = last_time == 0 ? 0 : time - last_time
           last_time = time
           last_pos = position
-          handler.call(year, stage_id, position, rr_name, nationality, time, last_dif)
+          handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
           # resume here (add other pattern, exploit them)
           # last_pos = tmp.split(';')[0]
           # last_dif = ''
@@ -222,25 +229,31 @@ class ImportUtils
           nationality = captures[2]
           last_pos = position
           time = last_time + last_dif
-          handler.call(year, stage_id, position, rr_name, nationality, time, last_dif)
+          handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
           # puts 'set last_pos to >' + last_pos + '<'
         elsif (line =~ patternSingle) then
           captures = line.match(patternSingle).captures
           rr_name = captures[0]
+          rr_name = normalize_name(rr_name)
           nationality = captures[1]
           if (mode == "dns") then
-            MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
+            #MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
           elsif (mode == "dnf") then
-            MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
+            #MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
           elsif (mode == "dnq") then
-            MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
+            #MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
           end
         else
-          if (is_TTT_stage && line =~ patterTeamTTT) then
-            # resume here MySQLUtils.create_ITE_stage_result_TTT(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
-          end
-          #  tester pour "Mark Cavendish (Gbr)" avec mode dns ou dnf ou dnq
+          # if (is_TTT_stage && line =~ patterTeamTTT) then
+          #   captures = line.match(patterTeamTTT).captures
+          #   MySQLUtils.create_ITE_stage_result_TTT(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
+          # end
+          if (line =~ extraInfosPattern) then
+            comment = line.match(extraInfosPattern).captures[0]
+            MySQLUtils.addInfosToStage(stage_id, comment)
+          else
           puts 'unable to parse: ' + '>' + line + '<'
+            end
         end
       end
       #puts '!!' + val + '!!'
@@ -250,7 +263,9 @@ class ImportUtils
     j=j+1
 
 
-    MySQLUtils.create_IG_stage_result(year, stage_id, stage_winner_str, jersey_str, sprint_str, mountain_str, young_str, team_str, combat_str)
+    #MySQLUtils.create_IG_stage_result(year, stage_id, stage_winner_str, jersey_str, sprint_str, mountain_str, young_str, team_str, combat_str)
+
+
 
     if (res_time.length == res_num.length && res_num.length == res_pos.length) then
 
@@ -322,6 +337,12 @@ class ImportUtils
 
 
     runners = doc.xpath("//node()[preceding::a[@name='partants']][following-sibling::a[@name='etapes']]")
+    if (runners == nil || runners.size() == 0 || runners == "") then
+      runners = doc.xpath("//node()[preceding::a[@name='Les partants']][following::a[@href='../eta_tdf/tour_de_france.php']]")
+    end
+    if (runners == nil || runners.size() == 0 || runners == "") then
+      raise "no runners found for year #{year}"
+    end
     current_team = "<unknown>"
     runners.each do |node|
       if (node.name == "strong" || node.name == "b") then
@@ -343,7 +364,10 @@ class ImportUtils
             firstname = record[2].strip
             nationality = NationalityUtils.normalizeNationality(record[3].strip)
             if (firstname != nil && firstname.length > 1 && lastname != nil && lastname.length > 1 && dossard != nil && dossard.length > 0) then
-              MySQLUtils.insertRaceRunner(year, dossard, lastname, firstname, nationality, current_team)
+              rr = MySQLUtils.getOrCreateRaceRunner(year, dossard, lastname, firstname, nationality, current_team)
+              @runner_map_id[my_downcase(firstname + ' ' + lastname)] = rr['id']
+              @runner_map_name[my_downcase(firstname + ' ' + lastname)] = rr['firstname'] + ' ' + rr['lastname']
+
             else
               puts "bad format ? >#{line}<"
             end
@@ -381,6 +405,9 @@ class ImportUtils
 
 
     cgeneralstr = doc.xpath("//text()[preceding::img[@src='../images/tour_de_france/maillot_jaune.gif']]").text()
+    if cgeneralstr == nil || cgeneralstr =="" then
+      cgeneralstr = doc.xpath("//text()[preceding::img[@src='../images/tour_de_france/classements.gif']]").text()
+    end
     doc.encoding = 'UTF-8'
     doc.css('script').each {|node| node.remove}
     doc.css('br').each {|node| node.replace('µµ')}
@@ -402,9 +429,6 @@ class ImportUtils
     patterTeamTTT = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
 
     #doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
-
-
-    # TODO: on ne parse pas résultat montagne, maillot vert, etc... ce qui empêche de remplir ig_stage_result
     last_dif = 0
     last_pos = '?'
     last_time = 0
@@ -494,7 +518,7 @@ class ImportUtils
         last_dif = Utils.strDurationToSec(captures[3], captures[4], captures[5])
         time = last_dif + last_time
         last_pos = position
-        handler.call(year, stage_id, position, rr_name, nationality, time, last_dif)
+        handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
         # puts 'set last_pos to à >' + last_pos + '<'
       elsif (line =~ patternTime) then
         captures = line.match(patternTime).captures
@@ -505,7 +529,7 @@ class ImportUtils
         last_dif = last_time == 0 ? 0 : time - last_time
         last_time = time
         last_pos = position
-        handler.call(year, stage_id, position, rr_name, nationality, time, last_dif)
+        handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
         # resume here (add other pattern, exploit them)
         # last_pos = tmp.split(';')[0]
         # last_dif = ''
@@ -518,26 +542,53 @@ class ImportUtils
         nationality = captures[2]
         last_pos = position
         time = last_time + last_dif
-        handler.call(year, stage_id, position, rr_name, nationality, time, last_dif)
+        handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
         # puts 'set last_pos to >' + last_pos + '<'
       elsif (line =~ patternSingle) then
         captures = line.match(patternSingle).captures
         rr_name = captures[0]
         nationality = captures[1]
+        rr_name = normalize_name(rr_name)
         if (mode == "dns") then
-          MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
+         # MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
         elsif (mode == "dnf") then
-          MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
+         # MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
         elsif (mode == "dnq") then
-          MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
+          # MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
         end
       else
         puts 'unable to parse: ' + '>' + line + '<'
       end
 
     end
-    MySQLUtils.create_IG_stage_result(year, stage_id, stage_winner_str, jersey_str, sprint_str, mountain_str, young_str, team_str, combat_str)
-    MySQLUtils.create_IG_race_result(year, race_id, jersey_str, sprint_str, mountain_str, young_str, team_str, combat_str)
+    MySQLUtils.create_IG_stage_result(year, stage_id, normalize_name(stage_winner_str), normalize_name(jersey_str), normalize_name(sprint_str), normalize_name(mountain_str), normalize_name(young_str), normalize_name(team_str), normalize_name(combat_str))
+    MySQLUtils.create_IG_race_result(year, race_id, normalize_name(jersey_str), normalize_name(sprint_str), normalize_name(mountain_str), normalize_name(young_str), normalize_name(team_str), normalize_name(combat_str))
+  end
+
+  def my_downcase(s)
+    return nil if s.nil?
+    Unicode::downcase(s.squeeze(" "))
+  end
+
+  def normalize_name(name)
+    return nil if name.nil?
+    result = @runner_map_name[my_downcase(name)]
+    if (result ==  nil)
+      s = name
+      s.tr('ÁÉÍÓÚ', 'aeiou')
+      s.tr!('ÀÈÌÒÙ', 'aeiou')
+      s.tr!('ÄËÏÖÜ', 'aeiou')
+      s.tr!('ÂÊÎÔÛ', 'aeiou')
+      s.tr!('áéíóú', 'aeiou')
+      s.tr!('àèìòù', 'aeiou')
+      s.tr!('äëïöü', 'aeiou')
+      s.tr!('âêîôû', 'aeiou')
+      result =  @runner_map_name[my_downcase(s)]
+      if (result == nil)
+        name
+      end
+    end
+    result
   end
 
   def get_stages_infos(prefix_url, year)
@@ -612,7 +663,7 @@ class ImportUtils
   end
 
   def classementEtapeLineHandler(year, stage_id, position, rr_name, nationality, time, last_dif)
-    MySQLUtils.create_ITE_stage_result(year, stage_id, position, rr_name, nationality, time, last_dif)
+   # MySQLUtils.create_ITE_stage_result(year, stage_id, position, rr_name, nationality, time, last_dif)
   end
 
   def discardLineHandler(year, stage_id, position, rr_name, nationality, time, last_dif)
@@ -620,6 +671,8 @@ class ImportUtils
   end
 
   def retrieve_year(year)
+    @runner_map_id = Hash.new
+    @runner_map_name = Hash.new
     prefix_url = get_prefix_url(year)
     get_generic_infos(prefix_url, year)
     get_stages_infos(prefix_url, year)

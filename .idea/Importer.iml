@@ -87,5 +87,6 @@
     <orderEntry type="library" scope="PROVIDED" name="mysql2 (v0.4.5, ruby-2.3.3-p222) [gem]" level="application" />
     <orderEntry type="library" scope="PROVIDED" name="nokogiri (v1.7.1, ruby-2.3.3-p222) [gem]" level="application" />
     <orderEntry type="library" scope="PROVIDED" name="numerizer (v0.1.1, ruby-2.3.3-p222) [gem]" level="application" />
+    <orderEntry type="library" scope="PROVIDED" name="unicode (v0.4.4.4, ruby-2.3.3-p222) [gem]" level="application" />
   </component>
 </module>
