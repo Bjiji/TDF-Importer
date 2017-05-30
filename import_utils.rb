@@ -7,6 +7,17 @@ require_relative 'nationality_utils'
 
 class ImportUtils
 
+  PatternCol = /km\s+([\d\.]+)\s+-\s+([-'A-zÀ-ÿ\s]+)\s+\(([\w\.]+)\)/
+  CommentPattern = /<!--[\s\S\n]*?-->/
+  PatternSingle = /^([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)$/
+  PatternWinner = /^1(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/
+  PatternTime = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "1. Marcel Kittel (All) en 4h56'52" (moy : 43.050 km/h)" avec nat, heure et minute optionnelle
+  PatternDelay = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
+  PatternSameTime1 = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
+  PatterTeamTTT = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
+  Stage_desc_regex = /(?:([\s'\w-\(\)]*)-)?(.*),\D+([\d\.]+)\s+km.*\((.*)\)/
+  ExtraInfosPattern = /^\*\s+(.*)/
+
   MountainCategoryMapping = {
       "Cat.1" => "1",
       "Cat.2" => "2",
@@ -65,16 +76,7 @@ class ImportUtils
     res_time = []
     j = 0
 
-    patternCol = /km\s+([\d\.]+)\s+-\s+([-'A-zÀ-ÿ\s]+)\s+\(([\w\.]+)\)/
-    commentPattern = /<!--[\s\S\n]*?-->/
-    patternSingle = /^([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)$/
-    patternWinner = /^1\.\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/
-    patternTime = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "1. Marcel Kittel (All) en 4h56'52" (moy : 43.050 km/h)" avec nat, heure et minute optionnelle
-    patternDelay = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
-    patternSameTime1 = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
-    patterTeamTTT = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
-    stage_desc_regex = /(?:([\s'\w-\(\)]*)-)?(.*),\D+([\d\.]+)\s+km.*\((.*)\)/
-    extraInfosPattern = /^\*\s+(.*)/
+
     #doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
     race_id = MySQLUtils.getOrCreateRace(year, nil)['id']
     stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::a[@href=\"tdf#{year}.php\"]]").text().gsub("\n", "").squeeze(" ").gsub("µ", "").strip
@@ -82,20 +84,20 @@ class ImportUtils
 
     if (stage_str == nil || stage_str.size == 0) then
       aaa = doc.xpath("//td[@class='texte']").text()
-      val=aaa.to_s.gsub("\n", " ").squeeze(" ").gsub(commentPattern, "")
+      val=aaa.to_s.gsub("\n", " ").squeeze(" ").gsub(CommentPattern, "")
       val = val.strip
       tmp_line = val.split('µµ')
       tmp_line.each do |line|
         puts line
-        if (line =~ stage_desc_regex) then
+        if (line =~ Stage_desc_regex) then
           stage_str = line
           break
         end
       end
     end
 
-    if (stage_str =~ stage_desc_regex) then
-      sarr = stage_str.gsub(stage_desc_regex, '\1;\2;\3;\4;').split(';')
+    if (stage_str =~ Stage_desc_regex) then
+      sarr = stage_str.gsub(Stage_desc_regex, '\1;\2;\3;\4;').split(';')
       sstart = sarr[0].squeeze(" ").strip
       send = sarr[1].squeeze(" ").strip
       sdist = sarr[2].squeeze(" ").strip
@@ -112,7 +114,10 @@ class ImportUtils
     if (stage == nil) then
       stage_type = detectStageType(doc)
       stage = MySQLUtils.createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
+    else
+      MySQLUtils.updateStageRoute(stage, stage_details)
     end
+
 
     stage_id = stage['id'];
     tmp = doc.xpath("//td[@class='texte']")
@@ -142,43 +147,46 @@ class ImportUtils
       tmp_line.each do |line|
         line = line.gsub(NBSP_CHAR, ' ').gsub(/\s+/, ' ').strip
 
-        if (line.include?('Etape :')) then
+        if (line.include?('Etape')) then
           mode = 'ite'
-        elsif (line.include?('Hors-delai :') || line.include?('Hors-delais :') || line.include?('Disqualifié :') || line.include?('Disqualifiés :')) then
+        elsif (line.include?('Hors-delai') || line.include?('Hors-delais') || line.include?('Disqualifié') || line.include?('Disqualifiés')) then
           mode = 'dnq'
-        elsif (line.include?('Non-partant :') || line.include?('Non-partants :')) then
+        elsif (line.include?('Non-partant') || line.include?('Non-partants')) then
           mode = 'dns'
-        elsif (line.include?('Abandon :') || line.include?('Abandons :')) then
+        elsif (line.include?('Abandon') || line.include?('Abandons')) then
           mode = 'dnf'
         elsif (line.include?("Côtes de l'étape") || line.include?("Côte de l'étape")) then
           mode = 'cols'
-        elsif (line.include?('Classement général :')) then
+        elsif (line.include?('Classement général')) then
           mode = 'jersey'
           last_dif = 0
           last_pos = '?'
           last_time = 0
           handler = self.method(:classementGeneralLineHandler)
-        elsif (line.include?('Classement général par points')) then
+        elsif (line.include?('Classement général par points') || line.include?('Classement par points')) then
           mode = 'sprint'
           handler = self.method(:discardLineHandler)
-        elsif (line.include?('Classement général de la montagne :')) then
+        elsif (line.include?('Classement général de la montagne') || line.include?('Classement de la montagne')) then
           mode = 'mountain'
-        elsif (line.include?('Classement général des jeunes :')) then
+        elsif (line.include?('Classement général des jeunes') || line.include?('Classement des jeunes')) then
           mode = 'young'
-        elsif (line.include?('Classement général par équipes :')) then
+        elsif (line.include?('Classement général par équipes') || line.include?('Classement par équipes')) then
           mode = 'team'
-        elsif (line.include?('Prix de la combativité : ')) then
+        elsif (line.include?('Prix de la combativité') && line.match(/:\W*(?:\d+\.)?\W*([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/)) then
           combat_str = line.match(/:\W*(?:\d+\.)?\W*([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/).captures[0]
-        elsif (mode == 'cols' && line =~ patternCol) then
+        elsif (mode == 'cols' && line =~ PatternCol) then
           col_pos += 1
-          col_km = line.match(patternCol).captures[0]
-          col_str = line.match(patternCol).captures[1]
-          col_cat = line.match(patternCol).captures[2]
+          col_km = line.match(PatternCol).captures[0]
+          col_str = line.match(PatternCol).captures[1]
+          col_cat = line.match(PatternCol).captures[2]
+          if (col_cat == nil || col_cat == "")
+            col_cat = "Cat.H.C"
+          end
           if (col_cat != nil && MountainCategoryMapping[col_cat] != nil) then
             col_cat = MountainCategoryMapping[col_cat]
           end
-        elsif (line =~ patternWinner) then
-          winner = line.match(patternWinner).captures[0]
+        elsif (line =~ PatternWinner) then
+          winner = line.match(PatternWinner).captures[0]
           if (mode == 'ite' && stage_winner_str == nil) then
             stage_winner_str = winner
           elsif (mode == 'jersey' && jersey_str == nil) then
@@ -197,8 +205,8 @@ class ImportUtils
         end
 
 
-        if (line =~ patternDelay) then
-          captures = line.match(patternDelay).captures
+        if (line =~ PatternDelay) then
+          captures = line.match(PatternDelay).captures
           position = captures[0]
           rr_name = captures[1]
           nationality = captures[2]
@@ -207,8 +215,8 @@ class ImportUtils
           last_pos = position
           handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
           # puts 'set last_pos to à >' + last_pos + '<'
-        elsif (line =~ patternTime) then
-          captures = line.match(patternTime).captures
+        elsif (line =~ PatternTime) then
+          captures = line.match(PatternTime).captures
           position = captures[0]
           rr_name = captures[1]
           nationality = captures[2]
@@ -217,13 +225,13 @@ class ImportUtils
           last_time = time
           last_pos = position
           handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
-          # resume here (add other pattern, exploit them)
+          # resume here (add other Pattern, exploit them)
           # last_pos = tmp.split(';')[0]
           # last_dif = ''
           # output.puts prefix + tmp
           # puts 'set last_pos to en >' + last_pos + '<'
-        elsif (line =~ patternSameTime1) then
-          captures = line.match(patternSameTime1).captures
+        elsif (line =~ PatternSameTime1) then
+          captures = line.match(PatternSameTime1).captures
           position = captures[0]
           rr_name = captures[1]
           nationality = captures[2]
@@ -231,25 +239,25 @@ class ImportUtils
           time = last_time + last_dif
           handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
           # puts 'set last_pos to >' + last_pos + '<'
-        elsif (line =~ patternSingle) then
-          captures = line.match(patternSingle).captures
+        elsif (line =~ PatternSingle) then
+          captures = line.match(PatternSingle).captures
           rr_name = captures[0]
           rr_name = normalize_name(rr_name)
           nationality = captures[1]
           if (mode == "dns") then
-            #MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
+            MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
           elsif (mode == "dnf") then
-            #MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
+            MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
           elsif (mode == "dnq") then
-            #MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
+            MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
           end
         else
           # if (is_TTT_stage && line =~ patterTeamTTT) then
           #   captures = line.match(patterTeamTTT).captures
           #   MySQLUtils.create_ITE_stage_result_TTT(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
           # end
-          if (line =~ extraInfosPattern) then
-            comment = line.match(extraInfosPattern).captures[0]
+          if (line =~ ExtraInfosPattern) then
+            comment = line.match(ExtraInfosPattern).captures[0]
             MySQLUtils.addInfosToStage(stage_id, comment)
           else
           puts 'unable to parse: ' + '>' + line + '<'
@@ -263,7 +271,7 @@ class ImportUtils
     j=j+1
 
 
-    #MySQLUtils.create_IG_stage_result(year, stage_id, stage_winner_str, jersey_str, sprint_str, mountain_str, young_str, team_str, combat_str)
+    MySQLUtils.create_IG_stage_result(year, stage_id, normalize_name(stage_winner_str), normalize_name(jersey_str), normalize_name(sprint_str), normalize_name(mountain_str), normalize_name(young_str), nil, normalize_name(combat_str))
 
 
 
@@ -419,15 +427,6 @@ class ImportUtils
     res_num = []
     res_time = []
 
-    patternCol = /km\s+([\d\.]+)\s+-\s+([-'A-zÀ-ÿ\s]+)\s+\(([\w\.]+)\)/
-    commentPattern = /<!--[\s\S\n]*?-->/
-    patternSingle = /^([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)$/
-    patternWinner = /^1\.\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/
-    patternTime = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "1. Marcel Kittel (All) en 4h56'52" (moy : 43.050 km/h)" avec nat, heure et minute optionnelle
-    patternDelay = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
-    patternSameTime1 = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
-    patterTeamTTT = /(\d+)\.\W+([-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
-
     #doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
     last_dif = 0
     last_pos = '?'
@@ -446,10 +445,14 @@ class ImportUtils
     col_km = nil
     mode = "ite"
     last_stage = MySQLUtils.getLastStage(year)
+
     if (last_stage == nil)
       raise "no last stage for year #{year}"
     end
     stage_id = last_stage['id']
+    stage_winner_id = MySQLUtils.getStageInfos(stage_id)['stage_winner_id']
+    stage_winner_str = MySQLUtils.getRaceRunnerName(stage_winner_id)
+
     cgeneralstr=cgeneralstr.to_s.gsub('\n', ' ')
     cgeneralstr = cgeneralstr.strip
     tmp_line = cgeneralstr.split('µµ')
@@ -458,13 +461,13 @@ class ImportUtils
     tmp_line.each do |line|
       line = line.gsub(NBSP_CHAR, ' ').gsub(/\s+/, ' ').strip
 
-      if (line.include?('Etape :')) then
+      if (line.include?('Etape')) then
         mode = 'ite'
-      elsif (line.include?('Hors-delai :') || line.include?('Hors-delais :') || line.include?('Disqualifié :') || line.include?('Disqualifiés :')) then
+      elsif (line.include?('Hors-delai') || line.include?('Hors-delais') || line.include?('Disqualifié') || line.include?('Disqualifiés')) then
         mode = 'dnq'
-      elsif (line.include?('Non-partant :') || line.include?('Non-partants :')) then
+      elsif (line.include?('Non-partant') || line.include?('Non-partants')) then
         mode = 'dns'
-      elsif (line.include?('Abandon :') || line.include?('Abandons :')) then
+      elsif (line.include?('Abandon') || line.include?('Abandons')) then
         mode = 'dnf'
       elsif (line.include?("Côtes de l'étape") || line.include?("Côte de l'étape")) then
         mode = 'cols'
@@ -478,18 +481,18 @@ class ImportUtils
         mode = 'young'
       elsif (line.include?('Classement des équipes')) then
         mode = 'team'
-      elsif (line.include?('Prix de la combativité : ')) then
+      elsif (line.include?('Prix de la combativité') && line.match(/:\W*(?:\d+\.)?\W*([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/)) then
         combat_str = line.match(/:\W([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/).captures[0]
-      elsif (mode == 'cols' && line =~ patternCol) then
+      elsif (mode == 'cols' && line =~ PatternCol) then
         col_pos += 1
-        col_km = line.match(patternCol).captures[0]
-        col_str = line.match(patternCol).captures[1]
-        col_cat = line.match(patternCol).captures[2]
+        col_km = line.match(PatternCol).captures[0]
+        col_str = line.match(PatternCol).captures[1]
+        col_cat = line.match(PatternCol).captures[2]
         if (col_cat != nil && MountainCategoryMapping[col_cat] != nil) then
           col_cat = MountainCategoryMapping[col_cat]
         end
-      elsif (line =~ patternWinner) then
-        winner = line.match(patternWinner).captures[0]
+      elsif (line =~ PatternWinner) then
+        winner = line.match(PatternWinner).captures[0]
         if (mode == 'ite' && stage_winner_str == nil) then
           stage_winner_str = winner
         elsif (mode == 'jersey' && jersey_str == nil) then
@@ -504,14 +507,14 @@ class ImportUtils
           team_str = winner
         elsif (col_str != nil && mode == 'cols') then
         end
-      elsif (line =~ patterTeamTTT) then
-        winner = line.match(patterTeamTTT).captures[1]
+      elsif (line =~ PatterTeamTTT) then
+        winner = line.match(PatterTeamTTT).captures[1]
         if (mode == 'team' && team_str == nil) then
           team_str = winner
         end
       end
-      if (line =~ patternDelay) then
-        captures = line.match(patternDelay).captures
+      if (line =~ PatternDelay) then
+        captures = line.match(PatternDelay).captures
         position = captures[0]
         rr_name = captures[1]
         nationality = captures[2]
@@ -520,8 +523,8 @@ class ImportUtils
         last_pos = position
         handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
         # puts 'set last_pos to à >' + last_pos + '<'
-      elsif (line =~ patternTime) then
-        captures = line.match(patternTime).captures
+      elsif (line =~ PatternTime) then
+        captures = line.match(PatternTime).captures
         position = captures[0]
         rr_name = captures[1]
         nationality = captures[2]
@@ -530,13 +533,13 @@ class ImportUtils
         last_time = time
         last_pos = position
         handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
-        # resume here (add other pattern, exploit them)
+        # resume here (add other Pattern, exploit them)
         # last_pos = tmp.split(';')[0]
         # last_dif = ''
         # output.puts prefix + tmp
         # puts 'set last_pos to en >' + last_pos + '<'
-      elsif (line =~ patternSameTime1) then
-        captures = line.match(patternSameTime1).captures
+      elsif (line =~ PatternSameTime1) then
+        captures = line.match(PatternSameTime1).captures
         position = captures[0]
         rr_name = captures[1]
         nationality = captures[2]
@@ -544,25 +547,25 @@ class ImportUtils
         time = last_time + last_dif
         handler.call(year, stage_id, position, normalize_name(rr_name), nationality, time, last_dif)
         # puts 'set last_pos to >' + last_pos + '<'
-      elsif (line =~ patternSingle) then
-        captures = line.match(patternSingle).captures
+      elsif (line =~ PatternSingle) then
+        captures = line.match(PatternSingle).captures
         rr_name = captures[0]
         nationality = captures[1]
         rr_name = normalize_name(rr_name)
         if (mode == "dns") then
-         # MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
+         MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
         elsif (mode == "dnf") then
-         # MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
+         MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
         elsif (mode == "dnq") then
-          # MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
+         MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
         end
       else
         puts 'unable to parse: ' + '>' + line + '<'
       end
 
     end
-    MySQLUtils.create_IG_stage_result(year, stage_id, normalize_name(stage_winner_str), normalize_name(jersey_str), normalize_name(sprint_str), normalize_name(mountain_str), normalize_name(young_str), normalize_name(team_str), normalize_name(combat_str))
-    MySQLUtils.create_IG_race_result(year, race_id, normalize_name(jersey_str), normalize_name(sprint_str), normalize_name(mountain_str), normalize_name(young_str), normalize_name(team_str), normalize_name(combat_str))
+    MySQLUtils.create_IG_stage_result(year, stage_id, normalize_name(stage_winner_str), normalize_name(jersey_str), normalize_name(sprint_str), normalize_name(mountain_str), normalize_name(young_str), nil, normalize_name(combat_str))
+    MySQLUtils.create_IG_race_result(year, race_id, normalize_name(jersey_str), normalize_name(sprint_str), normalize_name(mountain_str), normalize_name(young_str), nil, normalize_name(combat_str))
   end
 
   def my_downcase(s)
@@ -583,12 +586,15 @@ class ImportUtils
       s.tr!('àèìòù', 'aeiou')
       s.tr!('äëïöü', 'aeiou')
       s.tr!('âêîôû', 'aeiou')
+      s.tr!('ØøñÑ', 'oonn')
       result =  @runner_map_name[my_downcase(s)]
-      if (result == nil)
-        name
-      end
+
     end
-    result
+    if (result == nil)
+      name
+    else
+      result
+    end
   end
 
   def get_stages_infos(prefix_url, year)
@@ -663,7 +669,7 @@ class ImportUtils
   end
 
   def classementEtapeLineHandler(year, stage_id, position, rr_name, nationality, time, last_dif)
-   # MySQLUtils.create_ITE_stage_result(year, stage_id, position, rr_name, nationality, time, last_dif)
+    MySQLUtils.create_ITE_stage_result(year, stage_id, position, rr_name, nationality, time, last_dif)
   end
 
   def discardLineHandler(year, stage_id, position, rr_name, nationality, time, last_dif)
@@ -678,5 +684,4 @@ class ImportUtils
     get_stages_infos(prefix_url, year)
     parse_ig_result(prefix_url, year)
   end
-
 end

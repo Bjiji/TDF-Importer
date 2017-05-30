@@ -85,7 +85,7 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
         else
           if (isHard && col_cnt > 1) then
             "HM"
-          elsif (isHard && col_cnt == 1 || col_cnt > 2 && harderNumCat < 3) then
+          elsif (isHard && col_cnt == 1 || col_cnt >= 2 && harderNumCat < 3) then
             "MM"
           else
             "plaine"
@@ -125,7 +125,7 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
       stage_id = stage['id']
       stage_type = guessStageType(stage)
       current_type = @@client.query("select stage_type from stages where id  = '#{stage_id}'").first['stage_type']
-      if stage_type != nil && (current_type == nil || current_type.empty? || current_type == "plaine ?") then
+      if stage_type != nil then
         @@client.query("update stages set stage_type = '#{stage_type}' where id = #{stage_id}")
       end
     end
@@ -141,15 +141,11 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
     winner_res = @@client.query("select * from yj_stage_results where stage_id  = '#{stage_id}' and pos = 1").first
     if (winner_res != nil)
       time = winner_res['time_sec']
-      averageSpeed = (distance * 1.0 / (time / 60 / 60)).round(1)
+      averageSpeed = (distance * 1.0 / (time * 1.0 / 60 / 60)).round(3)
 
       @@client.query("update races set distance = '#{distance}', averageSpeed = '#{averageSpeed}' where year = #{year}")
     end
 
-  end
-
-  for i in 2013..2016
-    enforcePreviousStageInfos(i)
   end
 
 

@@ -55,15 +55,18 @@ class MySQLUtils
     result = @@client.query("SELECT r.* FROM races as r WHERE r.year = '#{year}'")
     if (result == nil || result.count == 0) then
       @@client.query("insert into races(year, name, created_at, updated_at, description) VALUES('#{year}', 'Année #{year}', now(), now(), \"#{mescape(race_description)}\");")
-      result = @@client.query("SELECT r.* FROM races as r WHERE r.year = '#{year}'")
+    else
+      @@client.query("update races set description = \"#{mescape(race_description)}\";")
     end
+    result = @@client.query("SELECT r.* FROM races as r WHERE r.year = '#{year}'")
     result.first
   end
 
   def self.getMatchingRaceRunner(year, cyclist_name)
-    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^[:alpha:]]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]','') collate utf8_general_ci and rr.year = '#{year}'")
+
+    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
     if (runner == nil || runner.size == 0) then
-      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^[:alpha:]]','') like  REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]','') collate utf8_general_ci and rr.year = '#{year}'")
+      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
     end
     if (runner != nil && runner.size > 0) then
       runner.first
@@ -96,7 +99,7 @@ class MySQLUtils
         puts "> match between '#{firstname} #{lastname}' and '#{rr['firstname']} #{rr['lastname']}' for year #{year} and dossard #{dossard} ?"
         return rr
       end
-      end
+    end
     cyclist_id = nil
     cyclist = getExactMatchCyclist(lastname, firstname, year)
     if (cyclist == nil) then
@@ -141,7 +144,12 @@ class MySQLUtils
   end
 
   def self.addInfosToStage(stage_id, stage_info)
-    @@client.query("UPDATE stages set info = CONCAT(IFNULL(CONCAT(info, '\n'),''), '#{mescape(stage_info)}') WHERE id = '#{stage_id}'")
+    # @@client.query("UPDATE stages set info = CONCAT(IFNULL(CONCAT(info, '\n'),''), '#{mescape(stage_info)}') WHERE id = '#{stage_id}'")
+    @@client.query("UPDATE stages set info = '#{mescape(stage_info)}' WHERE id = '#{stage_id}'")
+  end
+
+  def self.updateStageRoute(stage, route)
+    @@client.query("UPDATE stages set route = '#{mescape(route)}' WHERE id = '#{stage['id']}'")
   end
 
   def self.createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
@@ -228,16 +236,27 @@ class MySQLUtils
     end
   end
 
+  def self.getStageInfos(stage_id)
+    res = @@client.query("SELECT isr.stage_winner_id, isr.leader_id, isr.sprinter_id, isr.climber_id, isr.team_id, isr.young_id, isr.combine_id, isr.stage_combat_id, isr.overall_combat_id from ig_stage_results isr where isr.stage_id = #{stage_id};")
+    if (res != nil && res.size > 0) then
+      res.first
+    else
+      nil
+    end
+  end
+
   def self.create_IG_stage_result(year, stage_id, stage_winner_str, jersey_str, sprint_str, mountain_str, young_str, team_str, combat_str)
     result = @@client.query("SELECT id from ig_stage_results s WHERE s.stage_id = #{stage_id} and s.year = #{year}")
     if (result != nil && result.size > 0) then
-      puts "pb (duplicate ig) on year: #{year}, stage_id: #{stage_id}. overwrite:"
-      @@client.query("DELETE from ig_stage_results WHERE stage_id = #{stage_id} and year = #{year}")
+      if (stage_winner_str != nil && jersey_str != nil) then
+        puts "pb (duplicate ig) on year: #{year}, stage_id: #{stage_id}. overwrite:"
+        @@client.query("DELETE from ig_stage_results WHERE stage_id = #{stage_id} and year = #{year}")
+      end
     end
     if (stage_winner_str != nil) then
       stage_winner= getMatchingRaceRunner(year, stage_winner_str)
       if (stage_winner == nil) then
-        puts "pb winner not found on year: #{year}, stage_id: #{stage_winner_str}. nil instead"
+        raise "pb winner not found on year: #{year}, stage_id: #{stage_winner_str}. nil instead"
         stage_winner_id = nil
       else
         stage_winner_id = stage_winner['id']
@@ -246,7 +265,7 @@ class MySQLUtils
     if (jersey_str != nil) then
       jersey_winner= getMatchingRaceRunner(year, jersey_str)
       if (jersey_winner == nil) then
-        puts "pb jersey not found on year: #{year}, stage_id: #{jersey_str}. nil instead"
+        raise "pb jersey not found on year: #{year}, stage_id: #{jersey_str}. nil instead"
         jersey_winner_id = nil
       else
         jersey_winner_id = jersey_winner['id']
@@ -255,7 +274,7 @@ class MySQLUtils
     if (sprint_str != nil) then
       sprint_winner= getMatchingRaceRunner(year, sprint_str)
       if (sprint_winner == nil) then
-        puts "pb sprint not found on year: #{year}, stage_id: #{sprint_str}. nil instead"
+        raise "pb sprint not found on year: #{year}, stage_id: #{sprint_str}. nil instead"
         sprint_winner_id = nil
       else
         sprint_winner_id = sprint_winner['id']
@@ -264,7 +283,7 @@ class MySQLUtils
     if (mountain_str != nil) then
       mountain_winner= getMatchingRaceRunner(year, mountain_str)
       if (mountain_winner == nil) then
-        puts "pb mountain not found on year: #{year}, stage_id: #{mountain_str}. nil instead"
+        raise "pb mountain not found on year: #{year}, stage_id: #{mountain_str}. nil instead"
         mountain_winner_id = nil
       else
         mountain_winner_id = mountain_winner['id']
@@ -273,7 +292,7 @@ class MySQLUtils
     if (young_str != nil) then
       young_winner= getMatchingRaceRunner(year, young_str)
       if (young_winner == nil) then
-        puts "pb young not found on year: #{year}, stage_id: #{young_str}. nil instead"
+        raise "pb young not found on year: #{year}, stage_id: #{young_str}. nil instead"
         young_winner_id = nil
       else
         young_winner_id = young_winner['id']
@@ -282,7 +301,7 @@ class MySQLUtils
     if (team_str != nil) then
       team_winner= getTeam(team_str, year)
       if (team_winner == nil) then
-        puts "pb team not found on year: #{year}, stage_id: #{team_str}. nil instead"
+        raise "pb team not found on year: #{year}, stage_id: #{team_str}. nil instead"
         team_winner_id = nil
       else
         team_winner_id = team_winner['id']
@@ -291,7 +310,7 @@ class MySQLUtils
     if (combat_str != nil) then
       combat_winner= getMatchingRaceRunner(year, combat_str)
       if (combat_winner == nil) then
-        puts "pb combat not found on year: #{year}, stage_id: #{combat_str}. nil instead"
+        raise "pb combat not found on year: #{year}, stage_id: #{combat_str}. nil instead"
         combat_winner_id = nil
       else
         combat_winner_id = combat_winner['id']
@@ -303,9 +322,9 @@ class MySQLUtils
       statement = @@client.prepare(query)
       statement.execute(stage_id, stage_winner_id, jersey_winner_id, sprint_winner_id, mountain_winner_id, team_winner_id, young_winner_id, combat_winner_id, stage_winner_str, jersey_str, sprint_str, mountain_str, team_str, young_str, combat_str, year)
     rescue Exception => e
-      puts query
       puts e.message
       puts e.backtrace.inspect
+      raise query
     end
   end
 
@@ -391,20 +410,22 @@ class MySQLUtils
   end
 
   def self.getOrCreateMountain(year, stage_id, winner_str, col_str, col_cat, col_pos, km)
-    existing = @@client.query( "select id from mountain_stage_results where stage_id = #{stage_id} and `order` = #{col_pos}")
+    altitude = getLastMatchingAltitudeMountain(col_str)
+    finish = isFinish(stage_id, km)
+    existing = @@client.query("select id from mountain_stage_results where stage_id = #{stage_id} and `order` = #{col_pos}")
     if (existing != nil && existing.size > 0) then
-      puts "discard existing msr"
+      mountain_record = existing.first
+      statement = @@client.prepare("update mountain_stage_results set altitude = ?, finish = ?, category_s = ?, km = ? where id = '#{mountain_record['id']}'")
+      statement.execute(altitude, finish, col_cat, km)
     else
       winner = getMatchingRaceRunner(year, winner_str)
       if (winner != nil) then
         winner_id = winner['id']
       end
-      altitude = getLastMatchingAltitudeMountain(col_str)
-      finish = isFinish(stage_id, km)
-      query = "insert into mountain_stage_results(stage_id, `order`, name, leader_id, finish, category_s, leader_s, altitude, year) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      query = "insert into mountain_stage_results(stage_id, `order`, name, leader_id, finish, category_s, leader_s, altitude, km, year) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       begin
         statement = @@client.prepare(query)
-        statement.execute(stage_id, col_pos, col_str, winner_id, finish, col_cat, winner_str, altitude, year)
+        statement.execute(stage_id, col_pos, col_str, winner_id, finish, col_cat, winner_str, altitude, km, year)
       rescue Exception => e
         puts query
         puts e.message
@@ -433,4 +454,14 @@ class MySQLUtils
   def self.getLastStage(year)
     @@client.query("select s.* from stages s left join stages o on o.race_id = s.race_id and o.ordinal = s.ordinal + 1 where s.year = #{year} and o.ordinal is null order by s.ordinal desc").first()
   end
+
+  def self.getRaceRunnerName(rr_id)
+    runner = @@client.query("SELECT concat(c.firstname, ' ', c.lastname) as name FROM race_runners rr join cyclists c on c.id = rr.cyclist_id WHERE rr.id = '#{rr_id}'")
+    if (runner != nil && runner.size > 0) then
+      runner.first['name']
+    else
+      nil
+    end
+  end
+
 end
