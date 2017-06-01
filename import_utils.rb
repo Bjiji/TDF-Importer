@@ -7,7 +7,7 @@ require_relative 'nationality_utils'
 
 class ImportUtils
 
-  PatternCol = /km\s+([\d\.]+)\s+-\s+([-'A-zÀ-ÿ\s]+)\s+\(([\w\.]+)\)/
+  PatternCol = /km\s+([\d\.]+)\s+-\s+([-\/'A-zÀ-ÿ\s]+)\s+\(([\w\.]+)\)/
   CommentPattern = /<!--[\s\S\n]*?-->/
   PatternSingle = /^([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)$/
   PatternWinner = /^1(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/
@@ -15,7 +15,7 @@ class ImportUtils
   PatternDelay = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
   PatternSameTime1 = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
   PatterTeamTTT = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
-  Stage_desc_regex = /(?:([\s'\w-\(\)]*)-)?(.*),\D+([\d\.]+)\s+km.*\((.*)\)/
+  Stage_desc_regex = /(?:([A-zÀ-ÿ-'\s\/\(\)]*)-)?(.*),\D+([\d\.]+)\s+km.*\((.*)\)/
   ExtraInfosPattern = /^\*\s+(.*)/
 
   MountainCategoryMapping = {
@@ -101,7 +101,7 @@ class ImportUtils
       sstart = sarr[0].squeeze(" ").strip
       send = sarr[1].squeeze(" ").strip
       sdist = sarr[2].squeeze(" ").strip
-      sdate = sarr[3].squeeze(" ").strip
+      sdate = sarr[3].squeeze(" ").strip + " #{year}"
       if (sstart == nil || sstart == "")
         sstart == send
       end
@@ -145,8 +145,8 @@ class ImportUtils
 
       handler = self.method(:classementEtapeLineHandler)
       tmp_line.each do |line|
-        line = line.gsub(NBSP_CHAR, ' ').gsub(/\s+/, ' ').strip
-
+        line = line.gsub(NBSP_CHAR, ' ').gsub(CommentPattern, "").gsub(/\s+/, ' ').strip
+        #puts "parsing >#{line}<"
         if (line.include?('Etape')) then
           mode = 'ite'
         elsif (line.include?('Hors-delai') || line.include?('Hors-delais') || line.include?('Disqualifié') || line.include?('Disqualifiés')) then
@@ -157,12 +157,6 @@ class ImportUtils
           mode = 'dnf'
         elsif (line.include?("Côtes de l'étape") || line.include?("Côte de l'étape")) then
           mode = 'cols'
-        elsif (line.include?('Classement général')) then
-          mode = 'jersey'
-          last_dif = 0
-          last_pos = '?'
-          last_time = 0
-          handler = self.method(:classementGeneralLineHandler)
         elsif (line.include?('Classement général par points') || line.include?('Classement par points')) then
           mode = 'sprint'
           handler = self.method(:discardLineHandler)
@@ -172,6 +166,12 @@ class ImportUtils
           mode = 'young'
         elsif (line.include?('Classement général par équipes') || line.include?('Classement par équipes')) then
           mode = 'team'
+        elsif (line.include?('Classement général')) then
+          mode = 'jersey'
+          last_dif = 0
+          last_pos = '?'
+          last_time = 0
+          handler = self.method(:classementGeneralLineHandler)
         elsif (line.include?('Prix de la combativité') && line.match(/:\W*(?:\d+\.)?\W*([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/)) then
           combat_str = line.match(/:\W*(?:\d+\.)?\W*([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/).captures[0]
         elsif (mode == 'cols' && line =~ PatternCol) then

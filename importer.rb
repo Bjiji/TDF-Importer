@@ -5,8 +5,8 @@ require 'I18n'
 
 class Importer
   iu = ImportUtils.new
-  for year in 2000..2016
-   #iu.retrieve_year(year)
+  for year in 2016..2016
+   iu.retrieve_year(year)
    Normalizer.enforcePreviousStageInfos(year)
    Normalizer.updateStageType(year)
    Normalizer.updateFirstLastStage(year)

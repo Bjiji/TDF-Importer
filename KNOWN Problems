@@ -36,3 +36,8 @@ Sorting des columns (datatable stype = num-html) ne se fait pas. Il manque les p
 
 unable to parse: >* Tony Martin est non-partant suite à une fracture de la clavicule survenue dans une chute la veille. Christopher Froome devient alors 1er du classement général mais décide de ne pas porter le maillot jaune en hommage au coureur allemand.<
 
+---
+
+Prologue / Etape 0: n'est pas importé aujourd'hui:
+    format: "_p" comme ici pour 2012:
+    http://www.memoire-du-cyclisme.eu/eta_tdf_2006/tdf2012_p.php
