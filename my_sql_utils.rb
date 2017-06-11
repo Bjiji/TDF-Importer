@@ -36,11 +36,11 @@ class MySQLUtils
   def self.getExactMatchCyclist(lastname, firstname, year)
     cyclist = @@client.query("SELECT c.* FROM cyclists c  WHERE c.lastname LIKE '#{mescape(lastname)}' AND c.firstname LIKE '#{mescape(firstname)}' AND exists (select 1 from race_runners rr where rr.cyclist_id = c.id and #{year} < rr.year + 5 AND #{year} > rr.year - 5)")
     if (cyclist.size > 1) then
-      puts "'#{lastname}' - '#{firstname}' is ambiguous for year '#{year}':"
+
       cyclist.each do |cyclist|
         puts cyclist
       end
-      cyclist = nil
+      raise "'#{lastname}' - '#{firstname}' is ambiguous for year '#{year}':"
 #   elsif (cyclist_id.size == 0) then
 #     cyclist_id = @@client.query("SELECT distinct c.*, min(rr.year) 'min_year', max(rr.year) as 'max_year' FROM cyclists c join race_runners rr on rr.cyclist_id = c.id WHERE c.lastname LIKE '#{mescape(lastname)}' AND c.firstname LIKE '#{firstname.chars.first}%' group by c.id HAVING (#{year} < max_year + 5 AND #{year} > min_year - 5)")
     end
@@ -64,14 +64,21 @@ class MySQLUtils
 
   def self.getMatchingRaceRunner(year, cyclist_name)
 
-    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
+    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr join cyclists c on c.id = rr.cyclist_id WHERE   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.firstname), lower(c.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
     if (runner == nil || runner.size == 0) then
-      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
+      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr join cyclists c on c.id = rr.cyclist_id WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.lastname), lower(c.firstname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
+    end
+    if (runner == nil || runner.size == 0) then
+      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr join cyclists c on c.id = rr.cyclist_id WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
     end
     if (runner != nil && runner.size > 0) then
+      if (runner.size == 1) then
       runner.first
+      else
+        # raise "duplicate cyclist '#{cyclist_name}' found for year #{year}"
+      end
     else
-      nil
+      # raise "no cyclist '#{cyclist_name}' found for year #{year}"
     end
   end
 

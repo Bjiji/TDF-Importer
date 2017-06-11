@@ -11,11 +11,13 @@ class ImportUtils
   CommentPattern = /<!--[\s\S\n]*?-->/
   PatternSingle = /^([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)$/
   PatternWinner = /^1(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/
-  PatternTime = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "1. Marcel Kittel (All) en 4h56'52" (moy : 43.050 km/h)" avec nat, heure et minute optionnelle
-  PatternDelay = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
-  PatternSameTime1 = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
-  PatterTeamTTT = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
-  Stage_desc_regex = /(?:([A-zÀ-ÿ-'\s\/\(\)]*)-)?(.*),\D+([\d\.]+)\s+km.*\((.*)\)/
+  # strict PatternTime = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "1. Marcel Kittel (All) en 4h56'52" (moy : 43.050 km/h)" avec nat, heure et minute optionnelle
+  PatternTime = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ\s]+)(?:\s+\((\w{3})\))?\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/
+  PatternDelay = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ\s]+)(?:\s+\((\w{3})\))?\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
+  # strict PatternSameTime1 = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
+  PatternSameTime1 = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ\s]+)(?:\W+\((\w{3})\))?(?:\W+m\.t\.)?/
+  PatterTeamTTT = /^(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
+  Stage_desc_regex = /(?:([A-zÀ-ÿ-'\s\/\(\)]*)-)?(.*),\D+([\d\.]+)\s+km[^\(]*(?:\((.*)\))?/
   ExtraInfosPattern = /^\*\s+(.*)/
 
   MountainCategoryMapping = {
@@ -96,26 +98,30 @@ class ImportUtils
       end
     end
 
-    if (stage_str =~ Stage_desc_regex) then
-      sarr = stage_str.gsub(Stage_desc_regex, '\1;\2;\3;\4;').split(';')
-      sstart = sarr[0].squeeze(" ").strip
-      send = sarr[1].squeeze(" ").strip
-      sdist = sarr[2].squeeze(" ").strip
-      sdate = sarr[3].squeeze(" ").strip + " #{year}"
-      if (sstart == nil || sstart == "")
-        sstart == send
-      end
-      is_TTT_stage = stage_str =~ /CLM par équipes/
-    else
-      raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No def found : >#{stage_str}<"
-    end
+    # if (stage_str =~ Stage_desc_regex) then
+    #   captures = stage_str.match(Stage_desc_regex).captures
+    #   sstart = captures[0].squeeze(" ").strip
+    #   send = captures[1].squeeze(" ").strip
+    #   sdist = captures[2].squeeze(" ").strip
+    #   sdate = captures[3]
+    #   if (sdate != nil) then
+    #     sdate = sdate.squeeze(" ").strip + " #{year}"
+    #   end
+    #   if (sstart == nil || sstart == "")
+    #     sstart == send
+    #   end
+    #   is_TTT_stage = stage_str =~ /CLM par équipes/
+    # else
+    #   raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No def found : >#{stage_str}<"
+    # end
 
     stage = MySQLUtils.getStage(race_id, stageNb, subStageNb)
     if (stage == nil) then
+      raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No stage found"
       stage_type = detectStageType(doc)
       stage = MySQLUtils.createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
     else
-      MySQLUtils.updateStageRoute(stage, stage_details)
+     # MySQLUtils.updateStageRoute(stage, stage_details)
     end
 
 
@@ -146,7 +152,7 @@ class ImportUtils
       handler = self.method(:classementEtapeLineHandler)
       tmp_line.each do |line|
         line = line.gsub(NBSP_CHAR, ' ').gsub(CommentPattern, "").gsub(/\s+/, ' ').strip
-        #puts "parsing >#{line}<"
+       # puts "parsing >#{line}<"
         if (line.include?('Etape')) then
           mode = 'ite'
         elsif (line.include?('Hors-delai') || line.include?('Hors-delais') || line.include?('Disqualifié') || line.include?('Disqualifiés')) then
@@ -597,13 +603,19 @@ class ImportUtils
     end
   end
 
+  def retrieve_stage(year, stageNb)
+    prefix_url = get_prefix_url(year)
+    url = "#{prefix_url}tdf#{year}_#{stage_str }.php"
+    parse_result(url, year, stageNb, stageNb, 0, year.to_s + ';' + stageNb.to_s + '.' + 0.to_s + ';')
+  end
+
   def get_stages_infos(prefix_url, year)
 
-    stage=1
+    stage=0
     sub=0
     ordinal = stage + sub
     remaining_stage=true
-    while (remaining_stage) do
+    while (remaining_stage && stage <= 24) do
       begin
         search_sub = false
         result_found=false
@@ -682,6 +694,6 @@ class ImportUtils
     prefix_url = get_prefix_url(year)
     get_generic_infos(prefix_url, year)
     get_stages_infos(prefix_url, year)
-    parse_ig_result(prefix_url, year)
+#    parse_ig_result(prefix_url, year)
   end
 end
