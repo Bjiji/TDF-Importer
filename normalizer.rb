@@ -65,7 +65,7 @@ class Normalizer
   end
 
   def self.guessStageType(stage)
-    if (stage['distance'] < 70) then
+    if (stage['distance'] < 75) then
       "ITT"
     else
       res = @@client.query("select max(msr.finish) as finish, count(msr.id) as col_cnt,  IF(SUM(category_s = '1' OR category_s = 'HC' OR category_s = 'Cat.H.C' OR category_s = 'hGPM'), 'Yes', 'No') AS has1CatOrHarder, min(category_s) as min_cat
@@ -95,12 +95,27 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
     end
   end
 
-  def self.updateIgRaceResult(year)
+  def self.updateIgLastStageResult(year)
+    puts year
     last_stage = @@client.query("SELECT s.* from stages s where s.year = #{year} and is_last = 1").first
     if (last_stage == nil) then
       raise "no last stage for year #{year}"
     else
-      result = @@client.query("DELETE from ig_race_results where year = #{last_stage['race_id']}")
+      @@client.query("update ig_stage_results ig
+      join stages s on s.id = ig.stage_id
+      join ig_race_results ir on ir.year = s.year
+      set ig.leader_id = ir.leader_id, ig.team_id = ir.team_id, ig.climber_id = ir.climber_id, ig.sprinter_id = ir.sprinter_id, ig.young_id = ir.young_id, ig.combine_id = ir.combine_id
+      where s.year = #{year} and s.is_last");
+    end
+  end
+
+  def self.updateIgRaceResult(year)
+    raise "deprecated"
+    last_stage = @@client.query("SELECT s.* from stages s where s.year = #{year} and is_last = 1").first
+    if (last_stage == nil) then
+      raise "no last stage for year #{year}"
+    else
+      result = @@client.query("DELETE from ig_race_results where year = #{year}")
       result = @@client.query("SELECT #{year}, #{last_stage['race_id']}, leader_id, sprinter_id, climber_id, team_id, young_id, combine_id, overall_combat_id from ig_stage_results ite where ite.stage_id = #{last_stage['id']}").first
       MySQLUtils.create_IG_race_result_ids(*result.values)
     end

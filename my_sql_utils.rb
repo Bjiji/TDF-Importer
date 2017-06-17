@@ -73,7 +73,7 @@ class MySQLUtils
     end
     if (runner != nil && runner.size > 0) then
       if (runner.size == 1) then
-      runner.first
+        runner.first
       else
         # raise "duplicate cyclist '#{cyclist_name}' found for year #{year}"
       end
@@ -253,13 +253,7 @@ class MySQLUtils
   end
 
   def self.create_IG_stage_result(year, stage_id, stage_winner_str, jersey_str, sprint_str, mountain_str, young_str, team_str, combat_str)
-    result = @@client.query("SELECT id from ig_stage_results s WHERE s.stage_id = #{stage_id} and s.year = #{year}")
-    if (result != nil && result.size > 0) then
-      if (stage_winner_str != nil && jersey_str != nil) then
-        puts "pb (duplicate ig) on year: #{year}, stage_id: #{stage_id}. overwrite:"
-        @@client.query("DELETE from ig_stage_results WHERE stage_id = #{stage_id} and year = #{year}")
-      end
-    end
+
     if (stage_winner_str != nil) then
       stage_winner= getMatchingRaceRunner(year, stage_winner_str)
       if (stage_winner == nil) then
@@ -324,6 +318,23 @@ class MySQLUtils
       end
     end
 
+    doInsert = true
+    result = @@client.query("SELECT id from ig_stage_results s WHERE s.stage_id = #{stage_id} and s.year = #{year}")
+    if (result != nil && result.size > 0) then
+      if (stage_winner_str != nil && jersey_str != nil) then
+        puts "pb (duplicate ig) on year: #{year}, stage_id: #{stage_id}. overwrite:"
+        @@client.query("DELETE from ig_stage_results WHERE stage_id = #{stage_id} and year = #{year}")
+      else
+        doInsert = false
+      end
+    end
+    if (doInsert) then
+      insert_IG_stage_result(stage_id, stage_winner_id, jersey_winner_id, sprint_winner_id, mountain_winner_id, team_winner_id, young_winner_id, combat_winner_id, stage_winner_str, jersey_str, sprint_str, mountain_str, team_str, young_str, combat_str, year)
+    end
+
+  end
+
+  def self.insert_IG_stage_result(stage_id, stage_winner_id, jersey_winner_id, sprint_winner_id, mountain_winner_id, team_winner_id, young_winner_id, combat_winner_id, stage_winner_str, jersey_str, sprint_str, mountain_str, team_str, young_str, combat_str, year)
     query = "insert into ig_stage_results(stage_id, stage_winner_id, leader_id, sprinter_id, climber_id, team_id, young_id, stage_combat_id, stage_winner_s, leader_s, sprinter_s, climber_s, team_s, young_s, stage_combat_s, year) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     begin
       statement = @@client.prepare(query)

@@ -50,3 +50,9 @@ Petite histoire des homonymes: select count(distinct c.id), c.firstname, c.lastn
 
 Edition equipe, cols: verifier que cela fonctionne
 
+--
+Team tinkof: pas de filiation
+IAM cycling: pas de filiation
+à faire: affichage d'équipe dans les tableaux de résultat:  UCI avec en hover le label ?
+Mettre à jour les ecrans de search pour refleter team / UCI, et mettre à jour les liens pour utiliser UCI
+

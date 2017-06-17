@@ -163,14 +163,14 @@ class ImportUtils
           mode = 'dnf'
         elsif (line.include?("Côtes de l'étape") || line.include?("Côte de l'étape")) then
           mode = 'cols'
-        elsif (line.include?('Classement général par points') || line.include?('Classement par points')) then
+        elsif line.include?('Points :') ||  (line.include?('Classement général par points') || line.include?('Classement par points')) then
           mode = 'sprint'
           handler = self.method(:discardLineHandler)
-        elsif (line.include?('Classement général de la montagne') || line.include?('Classement de la montagne')) then
+        elsif (line.include?('Montagne :') || line.include?('Classement général de la montagne') || line.include?('Classement de la montagne')) then
           mode = 'mountain'
         elsif (line.include?('Classement général des jeunes') || line.include?('Classement des jeunes')) then
           mode = 'young'
-        elsif (line.include?('Classement général par équipes') || line.include?('Classement par équipes')) then
+        elsif line.include?('Equipes :') || (line.include?('Classement général par équipes') || line.include?('Classement par équipes')) then
           mode = 'team'
         elsif (line.include?('Classement général')) then
           mode = 'jersey'
@@ -611,7 +611,7 @@ class ImportUtils
 
   def get_stages_infos(prefix_url, year)
 
-    stage=0
+    stage=6
     sub=0
     ordinal = stage + sub
     remaining_stage=true
@@ -694,6 +694,6 @@ class ImportUtils
     prefix_url = get_prefix_url(year)
     get_generic_infos(prefix_url, year)
     get_stages_infos(prefix_url, year)
-#    parse_ig_result(prefix_url, year)
+    parse_ig_result(prefix_url, year)
   end
 end
