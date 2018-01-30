@@ -47,7 +47,7 @@ class Normalizer
   end
 
   def self.getPreviousStageInfo(stage_id)
-    res = @@client.query("SELECT isr.stage_winner_id, isr.leader_id, isr.sprinter_id, isr.climber_id, isr.team_id, isr.young_id, isr.combine_id, isr.stage_combat_id, isr.overall_combat_id from ig_stage_results isr left join stages s on s.id = isr.stage_id left join stages s2 on s2.race_id = s.race_id and s2.ordinal = s.ordinal + 1 left join ig_stage_results isr2 on isr2.stage_id = s2.id where s2.id = #{stage_id};")
+    res = @@client.query("SELECT isr.stage_winner_id, isr.leader_id, isr.sprinter_id, isr.climber_id, isr.race_team_id, isr.young_id, isr.combine_id, isr.stage_combat_id, isr.overall_combat_id from ig_stage_results isr left join stages s on s.id = isr.stage_id left join stages s2 on s2.race_id = s.race_id and s2.ordinal = s.ordinal + 1 left join ig_stage_results isr2 on isr2.stage_id = s2.id where s2.id = #{stage_id};")
     if (res != nil && res.size > 0) then
       res.first
     else
@@ -104,7 +104,7 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
       @@client.query("update ig_stage_results ig
       join stages s on s.id = ig.stage_id
       join ig_race_results ir on ir.year = s.year
-      set ig.leader_id = ir.leader_id, ig.team_id = ir.team_id, ig.climber_id = ir.climber_id, ig.sprinter_id = ir.sprinter_id, ig.young_id = ir.young_id, ig.combine_id = ir.combine_id
+      set ig.leader_id = ir.leader_id, ig.race_team_id = ir.race_team_id, ig.climber_id = ir.climber_id, ig.sprinter_id = ir.sprinter_id, ig.young_id = ir.young_id, ig.combine_id = ir.combine_id
       where s.year = #{year} and s.is_last");
     end
   end
@@ -116,7 +116,7 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
       raise "no last stage for year #{year}"
     else
       result = @@client.query("DELETE from ig_race_results where year = #{year}")
-      result = @@client.query("SELECT #{year}, #{last_stage['race_id']}, leader_id, sprinter_id, climber_id, team_id, young_id, combine_id, overall_combat_id from ig_stage_results ite where ite.stage_id = #{last_stage['id']}").first
+      result = @@client.query("SELECT #{year}, #{last_stage['race_id']}, leader_id, sprinter_id, climber_id, race_team_id, young_id, combine_id, overall_combat_id from ig_stage_results ite where ite.stage_id = #{last_stage['id']}").first
       MySQLUtils.create_IG_race_result_ids(*result.values)
     end
 
@@ -163,5 +163,50 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
 
   end
 
+  def self.enforce_entries_for_jersey_holders(year)
+    enforce_entries_for_jersey_holder(year, "leader_id")
+    enforce_entries_for_jersey_holder(year, "sprinter_id")
+    enforce_entries_for_jersey_holder(year, "climber_id")
+    enforce_entries_for_jersey_holder(year, "young_id")
+    enforce_entries_for_jersey_holder(year, "previous_leader")
+    enforce_entries_for_jersey_holder(year, "previous_sprinter")
+    enforce_entries_for_jersey_holder(year, "previous_climber")
+    enforce_entries_for_jersey_holder(year, "previous_young")
+  end
 
+  def self.enforce_entries_for_jersey_holder(year, jersey_column)
+
+    missing_results = @@client.query("select s.id as stage_id,  ig.#{jersey_column} as runner_id, '800' as pos, s.year as year from ig_stage_results IG
+    join stages s on s.id = ig.stage_id
+    left join ite_stage_results ite on ite.stage_id = ig.stage_id and ite.race_runner_id = ig.#{jersey_column}
+    where ig.year = #{year} and not(ig.#{jersey_column} is null) and ite.id is null")
+
+    if (missing_results != nil && missing_results.size > 0) then
+
+      missing_results.each do |mr|
+        puts "fix #{jersey_column} for stage '#{mr["stage_id"]}'"
+        query = "insert into ite_stage_results (stage_id, race_runner_id, pos, year) values (?,?,?,?)"
+        begin
+          statement = @@client.prepare(query)
+          statement.execute(mr["stage_id"], mr["runner_id"], mr["pos"], mr["year"])
+        rescue Exception => e
+          puts e.message
+          puts e.backtrace.inspect
+          raise query
+        end
+      end
+    end
+  end
+
+end
+
+for year in 1903..2016
+  #iu.retrieve_year(year)
+  Normalizer.enforcePreviousStageInfos(year)
+  Normalizer.enforce_entries_for_jersey_holders(year)
+  Normalizer.enforcePreviousStageInfos(year)
+  #Normalizer.updateStageType(year)
+  #Normalizer.updateFirstLastStage(year)
+  #Normalizer.updateDistanceSpeed(year)
+  #Normalizer.updateIgLastStageResult(year)
 end

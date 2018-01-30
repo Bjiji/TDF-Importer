@@ -56,3 +56,30 @@ IAM cycling: pas de filiation
 à faire: affichage d'équipe dans les tableaux de résultat:  UCI avec en hover le label ?
 Mettre à jour les ecrans de search pour refleter team / UCI, et mettre à jour les liens pour utiliser UCI
 
+--
+
+Stage sans porteur de maillot:
+select s.year, s.stageNb, s.subStageNb, s.stage_type from ig_stage_results ig
+  join stages s on s.id = ig.stage_id
+where ig.leader_id is null limit 3000;
+
+pb de stats: comparer avec
+    https://fr.wikipedia.org/wiki/Statistiques_des_victoires_d%27%C3%A9tapes_du_Tour_de_France
+    surtout HM (merckx)
+
+    contributeur à contacter sur la méthodologie: https://fr.wikipedia.org/wiki/Utilisateur:BoxOfficeFrance
+
+loading de page des tabs en différé: cf https://jqueryui.com/tabs/#ajax
+
+---
+
+Il y a 10 ans, premier maillot.
+
+--
+
+Import near real-time, après chaque étape:
+
+http://www.cyclingnews.com/tour-de-france/stage-3/results/ ?
+
+--
+tour de france 1996: pas de porteur de maillot blanc sur la plupart des étapes !!

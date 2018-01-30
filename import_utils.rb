@@ -16,7 +16,7 @@ class ImportUtils
   PatternDelay = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ\s]+)(?:\s+\((\w{3})\))?\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
   # strict PatternSameTime1 = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
   PatternSameTime1 = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ\s]+)(?:\W+\((\w{3})\))?(?:\W+m\.t\.)?/
-  PatterTeamTTT = /^(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
+  PatterTeamTTT = /^(\d+)(?:\.)?\W+([\-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
   Stage_desc_regex = /(?:([A-zÀ-ÿ-'\s\/\(\)]*)-)?(.*),\D+([\d\.]+)\s+km[^\(]*(?:\((.*)\))?/
   ExtraInfosPattern = /^\*\s+(.*)/
 
@@ -32,7 +32,7 @@ class ImportUtils
 
   NBSP_CHAR = 160.chr(Encoding::UTF_8)
 
-  def get_url_resource(url)
+  def self.get_url_resource(url)
     uri = URI(url)
     path = uri.path
     filename = 'cache' + path
@@ -60,7 +60,7 @@ class ImportUtils
 
   def parse_result(url, year, ordinal, stageNb, subStageNb, prefix)
     puts 'working on ' + url
-    html = get_url_resource(url)
+    html = ImportUtils.get_url_resource(url)
     if (html == nil)
       return nil
     end
@@ -98,30 +98,36 @@ class ImportUtils
       end
     end
 
-    # if (stage_str =~ Stage_desc_regex) then
-    #   captures = stage_str.match(Stage_desc_regex).captures
-    #   sstart = captures[0].squeeze(" ").strip
-    #   send = captures[1].squeeze(" ").strip
-    #   sdist = captures[2].squeeze(" ").strip
-    #   sdate = captures[3]
-    #   if (sdate != nil) then
-    #     sdate = sdate.squeeze(" ").strip + " #{year}"
-    #   end
-    #   if (sstart == nil || sstart == "")
-    #     sstart == send
-    #   end
-    #   is_TTT_stage = stage_str =~ /CLM par équipes/
-    # else
-    #   raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No def found : >#{stage_str}<"
-    # end
+    if (stage_str =~ Stage_desc_regex) then
+      captures = stage_str.match(Stage_desc_regex).captures
+      sstart = captures[0]
+      send = captures[1]
+      sdist = captures[2]
+      sdate = captures[3]
+      if sstart == nil then
+        sstart = send
+      end
+      sstart.squeeze(" ").strip
+      send.squeeze(" ").strip
+      sdist.squeeze(" ").strip
+      if (sdate != nil) then
+        sdate = sdate.squeeze(" ").strip + " #{year}"
+      end
+      if (sstart == nil || sstart == "")
+        sstart == send
+      end
+      is_TTT_stage = stage_str =~ /CLM par équipes/
+    else
+      raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No def found : >#{stage_str}<"
+    end
 
     stage = MySQLUtils.getStage(race_id, stageNb, subStageNb)
     if (stage == nil) then
-      raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No stage found"
+      #raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No stage found"
       stage_type = detectStageType(doc)
       stage = MySQLUtils.createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
     else
-     # MySQLUtils.updateStageRoute(stage, stage_details)
+      # MySQLUtils.updateStageRoute(stage, stage_details)
     end
 
 
@@ -152,7 +158,7 @@ class ImportUtils
       handler = self.method(:classementEtapeLineHandler)
       tmp_line.each do |line|
         line = line.gsub(NBSP_CHAR, ' ').gsub(CommentPattern, "").gsub(/\s+/, ' ').strip
-       # puts "parsing >#{line}<"
+        # puts "parsing >#{line}<"
         if (line.include?('Etape')) then
           mode = 'ite'
         elsif (line.include?('Hors-delai') || line.include?('Hors-delais') || line.include?('Disqualifié') || line.include?('Disqualifiés')) then
@@ -163,7 +169,7 @@ class ImportUtils
           mode = 'dnf'
         elsif (line.include?("Côtes de l'étape") || line.include?("Côte de l'étape")) then
           mode = 'cols'
-        elsif line.include?('Points :') ||  (line.include?('Classement général par points') || line.include?('Classement par points')) then
+        elsif line.include?('Points :') || (line.include?('Classement général par points') || line.include?('Classement par points')) then
           mode = 'sprint'
           handler = self.method(:discardLineHandler)
         elsif (line.include?('Montagne :') || line.include?('Classement général de la montagne') || line.include?('Classement de la montagne')) then
@@ -266,8 +272,8 @@ class ImportUtils
             comment = line.match(ExtraInfosPattern).captures[0]
             MySQLUtils.addInfosToStage(stage_id, comment)
           else
-          puts 'unable to parse: ' + '>' + line + '<'
-            end
+            puts 'unable to parse: ' + '>' + line + '<'
+          end
         end
       end
       #puts '!!' + val + '!!'
@@ -278,7 +284,6 @@ class ImportUtils
 
 
     MySQLUtils.create_IG_stage_result(year, stage_id, normalize_name(stage_winner_str), normalize_name(jersey_str), normalize_name(sprint_str), normalize_name(mountain_str), normalize_name(young_str), nil, normalize_name(combat_str))
-
 
 
     if (res_time.length == res_num.length && res_num.length == res_pos.length) then
@@ -317,9 +322,9 @@ class ImportUtils
 
   def get_generic_infos(prefix_url, year)
     url = "#{prefix_url}tdf#{year}.php"
-    get_url_resource(url)
+    ImportUtils.get_url_resource(url)
 
-    html = get_url_resource(url)
+    html = ImportUtils.get_url_resource(url)
     doc = Nokogiri::HTML(html)
     doc.encoding = 'utf-8'
     doc.css('script, link').each {|node| node.remove}
@@ -400,11 +405,11 @@ class ImportUtils
 
   def parse_ig_result(prefix_url, year)
     url = "#{prefix_url}tdf#{year}.php"
-    get_url_resource(url)
+    ImportUtils.get_url_resource(url)
 
     race = MySQLUtils.getOrCreateRace(year, nil)
     race_id = race['id']
-    html = get_url_resource(url)
+    html = ImportUtils.get_url_resource(url)
     doc = Nokogiri::HTML(html)
     doc.encoding = 'utf-8'
     doc.css('script, link').each {|node| node.remove}
@@ -559,11 +564,11 @@ class ImportUtils
         nationality = captures[1]
         rr_name = normalize_name(rr_name)
         if (mode == "dns") then
-         MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
+          MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, true, false, false)
         elsif (mode == "dnf") then
-         MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
+          MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, true, false)
         elsif (mode == "dnq") then
-         MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
+          MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
         end
       else
         puts 'unable to parse: ' + '>' + line + '<'
@@ -582,7 +587,7 @@ class ImportUtils
   def normalize_name(name)
     return nil if name.nil?
     result = @runner_map_name[my_downcase(name)]
-    if (result ==  nil)
+    if (result == nil)
       s = name
       s.tr('ÁÉÍÓÚ', 'aeiou')
       s.tr!('ÀÈÌÒÙ', 'aeiou')
@@ -593,7 +598,7 @@ class ImportUtils
       s.tr!('äëïöü', 'aeiou')
       s.tr!('âêîôû', 'aeiou')
       s.tr!('ØøñÑ', 'oonn')
-      result =  @runner_map_name[my_downcase(s)]
+      result = @runner_map_name[my_downcase(s)]
 
     end
     if (result == nil)
@@ -611,7 +616,7 @@ class ImportUtils
 
   def get_stages_infos(prefix_url, year)
 
-    stage=6
+    stage=0
     sub=0
     ordinal = stage + sub
     remaining_stage=true
@@ -697,3 +702,6 @@ class ImportUtils
     parse_ig_result(prefix_url, year)
   end
 end
+
+ImportUtils.get_url_resource('http://www.letour.fr/le-tour/2017/fr/etape-3/classements.html')
+
