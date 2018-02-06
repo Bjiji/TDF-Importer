@@ -138,10 +138,13 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
     stages = getStages(year);
     stages.each do |stage|
       stage_id = stage['id']
-      stage_type = nil #guessStageType(stage)
+      stage_type = stage['stage_type']
+      if (stage_type == nil || stage_type.include?("?")) then
+      stage_type = guessStageType(stage)
       current_type = @@client.query("select stage_type from stages where id  = '#{stage_id}'").first['stage_type']
       if stage_type != nil then
         @@client.query("update stages set stage_type = '#{stage_type}' where id = #{stage_id}")
+      end
       end
     end
   end
@@ -157,7 +160,6 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
     if (winner_res != nil)
       time = winner_res['time_sec']
       averageSpeed = (distance * 1.0 / (time * 1.0 / 60 / 60)).round(3)
-
       @@client.query("update races set distance = '#{distance}', averageSpeed = '#{averageSpeed}' where year = #{year}")
     end
 

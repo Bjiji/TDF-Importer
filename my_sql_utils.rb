@@ -447,8 +447,10 @@ class MySQLUtils
     end
   end
 
-  def self.getOrCreateMountain(year, stage_id, winner_str, col_str, col_cat, col_pos, km)
-    altitude = getLastMatchingAltitudeMountain(col_str)
+  def self.getOrCreateMountain(year, stage_id, winner_str, col_str, col_cat, col_pos, km, altitude)
+    if (altitude == nil)
+      altitude = getLastMatchingAltitudeMountain(col_str)
+    end
     finish = isFinish(stage_id, km)
     existing = @@client.query("select id from mountain_stage_results where stage_id = #{stage_id} and `order` = #{col_pos}")
     if (existing != nil && existing.size > 0) then

@@ -7,7 +7,7 @@ require_relative 'nationality_utils'
 
 class ImportUtils
 
-  PatternCol = /km\s+([\d\.]+)\s+-\s+([-\/'A-zÀ-ÿ\s]+)\s+\(([\w\.]+)\)/
+  PatternCol = /km\s+([\d\.]+)\s+-\s+([-\/'A-zÀ-ÿ\s]+)(?:,\s*([0-9]+)\sm)?\s+\(([\w\.]+)\)/
   CommentPattern = /<!--[\s\S\n]*?-->/
   PatternSingle = /^([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)$/
   PatternWinner = /^1(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/
@@ -17,7 +17,7 @@ class ImportUtils
   # strict PatternSameTime1 = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
   PatternSameTime1 = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ\s]+)(?:\W+\((\w{3})\))?(?:\W+m\.t\.)?/
   PatterTeamTTT = /^(\d+)(?:\.)?\W+([\-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
-  Stage_desc_regex = /(?:([A-zÀ-ÿ-'\s\/\(\)]*)-)?(.*),\D+([\d\.]+)\s+km[^\(]*(?:\((.*)\))?/
+  StageDescRegex = /(?:([A-zÀ-ÿ-'\s\/\(\)]*)-)?(.*),\D+([\d\.]+)\s+km(?:\sCLM)?\s+[^\(\w]*(?:\()?(.*)(?:\))?/
   ExtraInfosPattern = /^\*\s+(.*)/
 
   MountainCategoryMapping = {
@@ -81,25 +81,27 @@ class ImportUtils
 
     #doc.xpath('//td[@class='center']/a[following::tr[@class='strong'] and preceding::a[@name='ITE'] and not(preceding::a[@name='ITG']) and starts-with(@href,'/HISTO')]')
     race_id = MySQLUtils.getOrCreateRace(year, nil)['id']
-    stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::a[@href=\"tdf#{year}.php\"]]").text().gsub("\n", "").squeeze(" ").gsub("µ", "").strip
     stage_details = doc.xpath("//text()[preceding::img[@src=\"../images/fin.gif\"]][following::img[@src=\"../images/tour_de_france/profil.gif\"]]").text().squeeze(" ").gsub("µ", "").strip
-
+    stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::img[@src=\"../images/tour_de_france/profil.gif\"]]").text().gsub("\n", " ").squeeze(" ").gsub("µ", " ").strip
+    if (stage_str == nil || stage_str.size == 0) then
+      stage_str = doc.xpath("//text()[preceding::img[@src=\"../images/tour_de_france/parcours.gif\"]][following::a[@href=\"tdf#{year}.php\"]]").text().gsub("\n", " ").squeeze(" ").gsub("µ", " ").strip
+    end
     if (stage_str == nil || stage_str.size == 0) then
       aaa = doc.xpath("//td[@class='texte']").text()
-      val=aaa.to_s.gsub("\n", " ").squeeze(" ").gsub(CommentPattern, "")
+      val=aaa.to_s.gsub("\n", " ").squeeze(" ").gsub(CommentPattern, " ")
       val = val.strip
       tmp_line = val.split('µµ')
       tmp_line.each do |line|
         puts line
-        if (line =~ Stage_desc_regex) then
+        if (line =~ StageDescRegex) then
           stage_str = line
           break
         end
       end
     end
 
-    if (stage_str =~ Stage_desc_regex) then
-      captures = stage_str.match(Stage_desc_regex).captures
+    if (stage_str =~ StageDescRegex) then
+      captures = stage_str.match(StageDescRegex).captures
       sstart = captures[0]
       send = captures[1]
       sdist = captures[2]
@@ -117,6 +119,7 @@ class ImportUtils
         sstart == send
       end
       is_TTT_stage = stage_str =~ /CLM par équipes/
+      is_ITT = !is_TTT_stage && stage_str =~ /CLM/
     else
       raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No def found : >#{stage_str}<"
     end
@@ -124,7 +127,13 @@ class ImportUtils
     stage = MySQLUtils.getStage(race_id, stageNb, subStageNb)
     if (stage == nil) then
       #raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No stage found"
-      stage_type = detectStageType(doc)
+      if (is_ITT) then
+        stage_type = "ITT"
+      elsif (is_TTT_stage) then
+        stage_type = "TTT"
+      else
+        stage_type = detectStageType(doc)
+      end
       stage = MySQLUtils.createStage(race_id, year, stageNb, subStageNb, sstart, send, sdist, sdate, stage_type, ordinal, stage_details)
     else
       # MySQLUtils.updateStageRoute(stage, stage_details)
@@ -148,6 +157,7 @@ class ImportUtils
     col_pos = 0
     col_str = nil
     col_cat = nil
+    col_alt = nil
     col_km = nil
     mode = "ite"
     tmp.each do |node|
@@ -190,7 +200,8 @@ class ImportUtils
           col_pos += 1
           col_km = line.match(PatternCol).captures[0]
           col_str = line.match(PatternCol).captures[1]
-          col_cat = line.match(PatternCol).captures[2]
+          col_alt = line.match(PatternCol).captures[2]
+          col_cat = line.match(PatternCol).captures[3]
           if (col_cat == nil || col_cat == "")
             col_cat = "Cat.H.C"
           end
@@ -212,7 +223,7 @@ class ImportUtils
           elsif (mode == 'team' && team_str == nil) then
             team_str = winner
           elsif (col_str != nil && mode == 'cols') then
-            MySQLUtils.getOrCreateMountain(year, stage_id, normalize_name(winner), col_str, col_cat, col_pos, col_km)
+            MySQLUtils.getOrCreateMountain(year, stage_id, normalize_name(winner), col_str, col_cat, col_pos, col_km, col_alt)
           end
         end
 
@@ -423,7 +434,12 @@ class ImportUtils
     race_description = doc.xpath("//text()[preceding::b[u[text()='La petite histoire']]][following::a[@name='partants']]").text().gsub("µµ", "\n").squeeze(" ").strip;
 
 
-    cgeneralstr = doc.xpath("//text()[preceding::img[@src='../images/tour_de_france/maillot_jaune.gif']]").text()
+
+    #cgeneralstr = doc.xpath("//text()[preceding::b[u[text()='Classement général']]][following::b[u[text()='Classement par points']]]").text()
+    cgeneralstr = doc.xpath("//text()[preceding::b[u[text()='Classement général']]]").text()
+    if cgeneralstr == nil || cgeneralstr =="" then
+      cgeneralstr = doc.xpath("//text()[preceding::img[@src='../images/tour_de_france/maillot_jaune.gif']]").text()
+    end
     if cgeneralstr == nil || cgeneralstr =="" then
       cgeneralstr = doc.xpath("//text()[preceding::img[@src='../images/tour_de_france/classements.gif']]").text()
     end

@@ -8,11 +8,11 @@ class Importer
   years = [1982, 1983, 1978]
   iu = ImportUtils.new
   for year in 2017..2017
-   iu.retrieve_year(year)
+    iu.retrieve_year(year)
    Normalizer.enforcePreviousStageInfos(year)
    Normalizer.updateStageType(year)
    Normalizer.updateFirstLastStage(year)
-   Normalizer.updateDistanceSpeed(year)
    Normalizer.updateIgLastStageResult(year)
+   Normalizer.updateDistanceSpeed(year)
   end
 end
