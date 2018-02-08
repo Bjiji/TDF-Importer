@@ -1,6 +1,7 @@
 require 'mysql2'
 require 'chronic_duration'
 require_relative 'nationality_utils'
+require_relative 'utils'
 
 class MySQLUtils
 
@@ -14,17 +15,22 @@ class MySQLUtils
     end
   end
 
-  def self.getRaceTeam(team, year)
-    team = @@client.query("SELECT t.* FROM race_teams t WHERE trim(lower(t.label)) like trim(lower(\"#{mescape(team)}\")) and year = #{year}")
+  def self.getRaceTeam(team_name, year)
+    team = @@client.query("SELECT rt.* FROM race_teams rt WHERE trim(lower(rt.label)) like trim(lower(\"#{mescape(Utils.stripNonAlphaNum(team_name))}\")) and rt.year = #{year}")
     if (team != nil && team.size > 0) then
       team.first
     else
-      nil
+      team = @@client.query("SELECT rt.* FROM race_teams rt join teams t on t.id = rt.team_id WHERE trim(lower(t.name)) like trim(lower(\"#{mescape(Utils.stripNonAlphaNum(team_name))}\")) and rt.year = #{year}")
+      if (team != nil && team.size > 0) then
+        team.first
+      else
+        nil
+      end
     end
   end
 
   def self.getTeam(team)
-    team = @@client.query("SELECT t.* FROM teams t WHERE trim(lower(t.name)) like trim(lower(\"#{mescape(team)}\"))")
+    team = @@client.query("SELECT t.* FROM teams t WHERE trim(lower(t.name)) like trim(lower(\"#{mescape(Utils.stripNonAlphaNum(team))}\"))")
     if (team != nil && team.size > 0) then
       team.first
     else
@@ -232,6 +238,30 @@ class MySQLUtils
     begin
       statement = @@client.prepare(query)
       statement.execute(stage_id, rr_id, position, dns ? 1 : nil, dnf ? 1 : nil, dnq ? 1 : nil, year, diff_time_sec, time_sec, "importer.rb @ #{Time.new}", runner_name)
+    rescue Exception => e
+      puts query
+      puts e.message
+      puts e.backtrace.inspect
+    end
+  end
+
+  def self.create_ITE_stage_result_TTT(year, stage_id, position, team_name, time_sec, diff_time_sec, dns=nil, dnf=nil, dnq=nil)
+    rt_id = nil
+    rt = getRaceTeam(team_name, year)
+    if (rt != nil) then
+      rt_id = rt['id']
+      result = @@client.query("SELECT id from ite_stage_results s WHERE s.stage_id = #{stage_id} and s.race_team_id = #{rt_id}")
+      if (result != nil && result.size > 0) then
+        puts "pb (duplicate ite_TTT) on year: #{year}, stage_id: #{stage_id}, position: #{position}, name: #{team_name}, time: #{time_sec ? Time.at(time_sec).utc.strftime("%H:%M:%S") : nil}. discard"
+        return
+      end
+    else
+     raise "team '#{team_name}' not found for year: #{year}, stage_id: #{stage_id}, position: #{position}, time: #{time_sec ? Time.at(time_sec).utc.strftime("%H:%M:%S") : nil}. nil instead"
+    end
+    query = "insert into ite_stage_results(stage_id, race_team_id, pos, dns, dnf, dnq, year, diff_time_sec, time_sec, _confidence, runner_s) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    begin
+      statement = @@client.prepare(query)
+      statement.execute(stage_id, rt_id, position, dns ? 1 : nil, dnf ? 1 : nil, dnq ? 1 : nil, year, diff_time_sec, time_sec, "importer.rb @ #{Time.new}", team_name)
     rescue Exception => e
       puts query
       puts e.message

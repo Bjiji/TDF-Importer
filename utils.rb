@@ -1,5 +1,15 @@
 class Utils
 
+  def self.stripNonAlphaNum(str)
+    res = str
+    if (res != nil) then
+      res = res.gsub(/\s+/, ' ')
+      res = res.gsub(/[^\-.,\/'A-zÀ-ÿ0-9\s]+/, '')
+      res = res.strip
+    end
+    return res
+  end
+
   def self.strDurationToSec(hours, mins, secs)
     hours.to_i * 3600 + mins.to_i * 60 + secs.to_i
   end
@@ -20,7 +30,5 @@ class Utils
            'août' => 'August'
     )
   end
-
-  puts strDurationToSec("1", "1", "")
 
 end

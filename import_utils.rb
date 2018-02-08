@@ -9,15 +9,18 @@ class ImportUtils
 
   PatternCol = /km\s+([\d\.]+)\s+-\s+([-\/'A-zÀ-ÿ\s]+)(?:,\s*([0-9]+)\sm)?\s+\(([\w\.]+)\)/
   CommentPattern = /<!--[\s\S\n]*?-->/
-  PatternSingle = /^([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)$/
-  PatternWinner = /^1(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)/
+  PatternSingle = /^([-'A-zÀ-ÿ0-9\s]+)\W+\((\w{3})\)$/
+  PatternWinner = /^1(?:\.)?\W+([-'A-zÀ-ÿ0-9\s]+)\W+\((\w{3})\)/
   # strict PatternTime = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\s+\((\w{3})\)\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "1. Marcel Kittel (All) en 4h56'52" (moy : 43.050 km/h)" avec nat, heure et minute optionnelle
-  PatternTime = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ\s]+)(?:\s+\((\w{3})\))?\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/
-  PatternDelay = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ\s]+)(?:\s+\((\w{3})\))?\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
+  PatternTime = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ0-9\s]+)(?:\s+\((\w{3})\))?\W+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/
+  PatternDelay = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ0-9\s]+)(?:\s+\((\w{3})\))?\W+à\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # match: "30. Andreas Klöden (All) à 1h02'43" avec heure et minute optionnelle
   # strict PatternSameTime1 = /(\d+)(?:\.)?\W+([-'A-zÀ-ÿ\s]+)\W+\((\w{3})\)(?:\W+m\.t\.)?/ # match 22. Andrew Talansky (Usa) m.t.
-  PatternSameTime1 = /^(\d+)(?:\.)?\W*([-'A-zÀ-ÿ\s]+)(?:\W+\((\w{3})\))?(?:\W+m\.t\.)?/
-  PatterTeamTTT = /^(\d+)(?:\.)?\W+([\-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
-  StageDescRegex = /(?:([A-zÀ-ÿ-'\s\/\(\)]*)-)?(.*),\D+([\d\.]+)\s+km(?:\sCLM)?\s+[^\(\w]*(?:\()?(.*)(?:\))?/
+  PatternSameTime1 = /^(\d+)(?:\.)?\W*([\-'A-zÀ-ÿ0-9\s]+)(?:\W+\((\w{3})\))?(?:\W+m\.t\.)?/
+
+  # deprecated use generic PatternTime instead
+  # #PatterTeamTTT = /^(\d+)(?:\.)?\W+([\-'A-zÀ-ÿ\s]+)\s+en\W+(?:(\d+)h)?(?:(\d+)')?(\d+)/ # 1. BMC RACING TEAM en 32'15"
+  #StageDescRegex = /(?:([A-zÀ-ÿ-'\s\/\(\)]*)-)?(.*),\D+([\d\.]+)\s+km(?:\sCLM)?\s+[^\(\w]*(?:\()?(.*)(?:\))?/
+  StageDescRegex = /(?:([A-zÀ-ÿ\-'\s\/\(\)]*)-)?(.*),\D+([\d\.]+)\s+km\s+[^\(]*(?:\()?(.*)(?:\))/
   ExtraInfosPattern = /^\*\s+(.*)/
 
   MountainCategoryMapping = {
@@ -118,7 +121,7 @@ class ImportUtils
       if (sstart == nil || sstart == "")
         sstart == send
       end
-      is_TTT_stage = stage_str =~ /CLM par équipes/
+      is_TTT_stage = (stage_str =~ /CLM par équipes/)
       is_ITT = !is_TTT_stage && stage_str =~ /CLM/
     else
       raise "pb for stage #{stageNb}.#{subStageNb} (#{year}). No def found : >#{stage_str}<"
@@ -165,7 +168,11 @@ class ImportUtils
       val.strip
       tmp_line = val.split('µµ')
 
-      handler = self.method(:classementEtapeLineHandler)
+      if (is_TTT_stage) then
+        handler = self.method(:classementTTTLineHandler)
+      else
+        handler = self.method(:classementEtapeLineHandler)
+      end
       tmp_line.each do |line|
         line = line.gsub(NBSP_CHAR, ' ').gsub(CommentPattern, "").gsub(/\s+/, ' ').strip
         # puts "parsing >#{line}<"
@@ -275,10 +282,6 @@ class ImportUtils
             MySQLUtils.create_ITE_stage_result(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
           end
         else
-          # if (is_TTT_stage && line =~ patterTeamTTT) then
-          #   captures = line.match(patterTeamTTT).captures
-          #   MySQLUtils.create_ITE_stage_result_TTT(year, stage_id, nil, rr_name, nationality, nil, nil, false, false, true)
-          # end
           if (line =~ ExtraInfosPattern) then
             comment = line.match(ExtraInfosPattern).captures[0]
             MySQLUtils.addInfosToStage(stage_id, comment)
@@ -625,8 +628,12 @@ class ImportUtils
   end
 
   def retrieve_stage(year, stageNb)
+     @runner_map_id = Hash.new
+     @runner_map_name = Hash.new
+     prefix_url = get_prefix_url(year)
+     get_generic_infos(prefix_url, year)
     prefix_url = get_prefix_url(year)
-    url = "#{prefix_url}tdf#{year}_#{stage_str }.php"
+    url = "#{prefix_url}tdf#{year}_#{stageNb}.php"
     parse_result(url, year, stageNb, stageNb, 0, year.to_s + ';' + stageNb.to_s + '.' + 0.to_s + ';')
   end
 
@@ -692,8 +699,10 @@ class ImportUtils
     end
   end
 
-  def classementTTTLineHandler(year, stage_id, position, rr_name, nationality, time, last_dif)
-    # puts "général: #{line}"
+  def classementTTTLineHandler(year, stage_id, position, team_name, nationality, time, dif_time)
+    #   captures = line.match(patterTeamTTT).captures
+    MySQLUtils.create_ITE_stage_result_TTT(year, stage_id, position, team_name, time, dif_time, false, false, false)
+    # puts "TTT: #{year}-#{stage_id} #{position} #{rr_name} (#{nationality}) #{time} (#{last_dif})"
   end
 
 
@@ -718,6 +727,4 @@ class ImportUtils
     parse_ig_result(prefix_url, year)
   end
 end
-
-ImportUtils.get_url_resource('http://www.letour.fr/le-tour/2017/fr/etape-3/classements.html')
 
