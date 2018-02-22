@@ -4,7 +4,100 @@ require_relative 'utils'
 
 class Normalizer
 
-  @@client = Mysql2::Client.new(:host => "localhost", :username => "root", :password => "root", :database => "tdf")
+  @@client = Mysql2::Client.new(:host => "localhost", :username => "tdf", :password => "tdf", :database => "tdf")
+
+  # try to attach orphan result to race_runner.
+  # Useful when discrepancy in name are detected and then fixed by settings cyclist.alternate_name when needed.
+  def self.updateRunnerLinkage(year)
+    updateRunnerLinkageITE(year)
+    updateRunnerLinkageISR(year)
+    updateRunnerLinkageMSR(year)
+  end
+
+  def self.updateRunnerLinkageISR(year)
+    updateRunnerLinkageISRColname(year, "stage_winner")
+    updateRunnerLinkageISRColname(year, "leader")
+    updateRunnerLinkageISRColname(year, "sprinter")
+    updateRunnerLinkageISRColname(year, "climber")
+    updateRunnerLinkageISRColname(year, "young")
+    updateRunnerLinkageISRColname(year, "combine")
+    updateRunnerLinkageISRColname(year, "stage_combat")
+    updateRunnerLinkageISRColname(year, "overall_combat")
+  end
+
+  def self.updateRunnerLinkageISRColname(year, colname)
+    res = @@client.query("SELECT isr.* from ig_stage_results isr join stages s on isr.stage_id = s.id where isr.#{colname}_id is null and s.year = #{year}")
+    res.each do |ite|
+      runner_name = ite["#{colname}_s"]
+      if (runner_name != nil && !runner_name.empty?) then
+        race_runner = MySQLUtils.getMatchingRaceRunner(year, runner_name)
+        if (race_runner != nil) then
+          puts "fix '#{runner_name}' for #{ite['id']}"
+          query = "update ig_stage_results set #{colname}_id = ? where id = ?"
+          begin
+            statement = @@client.prepare(query)
+            statement.execute(race_runner['id'], ite['id'])
+          rescue Exception => e
+            puts query
+            puts e.message
+            puts e.backtrace.inspect
+          end
+        else
+          puts "#{colname} link to '#{runner_name}' NOT found ! #{ite}"
+        end
+      end
+    end
+  end
+
+  def self.updateRunnerLinkageMSR(year)
+    updateRunnerLinkageMSRColname(year, "leader")
+  end
+
+  def self.updateRunnerLinkageMSRColname(year, colname)
+    res = @@client.query("SELECT isr.* from mountain_stage_results isr join stages s on isr.stage_id = s.id where isr.#{colname}_id is null and s.year = #{year}")
+    res.each do |ite|
+      runner_name = ite["#{colname}_s"]
+      if (runner_name != nil && !runner_name.empty?) then
+        race_runner = MySQLUtils.getMatchingRaceRunner(year, runner_name)
+        if (race_runner != nil) then
+          puts "fix '#{runner_name}' for #{ite['id']}"
+          query = "update mountain_stage_results set #{colname}_id = ? where id = ?"
+          begin
+            statement = @@client.prepare(query)
+            statement.execute(race_runner['id'], ite['id'])
+          rescue Exception => e
+            puts query
+            puts e.message
+            puts e.backtrace.inspect
+          end
+        else
+          puts "#{colname} link to '#{runner_name}' NOT found ! #{ite}"
+        end
+      end
+    end
+  end
+
+  def self.updateRunnerLinkageITE(year)
+    res = @@client.query("SELECT ite.* from stages s join ite_stage_results ite on ite.stage_id = s.id where ite.race_runner_id is null and s.year = #{year}")
+    res.each do |ite|
+      runner_name = ite["runner_s"]
+      race_runner = MySQLUtils.getMatchingRaceRunner(year, runner_name)
+      if (race_runner != nil) then
+        puts "fix '#{runner_name}' for #{ite['id']}"
+        query = "update ite_stage_results set race_runner_id = ? where id = ?"
+        begin
+          statement = @@client.prepare(query)
+          statement.execute(race_runner['id'], ite['id'])
+        rescue Exception => e
+          puts query
+          puts e.message
+          puts e.backtrace.inspect
+        end
+      else
+        puts "link to '#{runner_name}' NOT found ! #{ite}"
+      end
+    end
+  end
 
   def enforcePreviousStageInfos(year, conflict_mode = "overwrite")
     stages = getStages(year);
@@ -141,11 +234,11 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
       stage_id = stage['id']
       stage_type = stage['stage_type']
       if (stage_type == nil || stage_type.include?("?")) then
-      stage_type = guessStageType(stage)
-      current_type = @@client.query("select stage_type from stages where id  = '#{stage_id}'").first['stage_type']
-      if stage_type != nil then
-        @@client.query("update stages set stage_type = '#{stage_type}' where id = #{stage_id}")
-      end
+        stage_type = guessStageType(stage)
+        current_type = @@client.query("select stage_type from stages where id  = '#{stage_id}'").first['stage_type']
+        if stage_type != nil then
+          @@client.query("update stages set stage_type = '#{stage_type}' where id = #{stage_id}")
+        end
       end
     end
   end
@@ -201,19 +294,19 @@ where s.id = '#{stage['id']}' GROUP BY s.id;").first
     end
   end
 
-def cleanTeamName(year)
-  race_teams = @@client.query("select rt.* from race_teams rt where year  = '#{year}'")
-  race_teams.each do |rt|
-    label = rt['label']
-    team_id = rt['id']
-    if (label != nil) then
-    new_label = Utils.stripNonAlphaNum(label)
-    end
-    if (new_label != label) then
-      @@client.query("update race_teams set label = '#{new_label}' where id = #{team_id}")
+  def cleanTeamName(year)
+    race_teams = @@client.query("select rt.* from race_teams rt where year  = '#{year}'")
+    race_teams.each do |rt|
+      label = rt['label']
+      team_id = rt['id']
+      if (label != nil) then
+        new_label = Utils.stripNonAlphaNum(label)
+      end
+      if (new_label != label) then
+        @@client.query("update race_teams set label = '#{new_label}' where id = #{team_id}")
+      end
     end
   end
-end
 
 # n = Normalizer.new
 # for year in 1947..2017

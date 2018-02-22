@@ -5,7 +5,7 @@ require_relative 'utils'
 
 class MySQLUtils
 
-  @@client = Mysql2::Client.new(:host => "localhost", :username => "root", :password => "root", :database => "tdf")
+  @@client = Mysql2::Client.new(:host => "localhost", :username => "tdf", :password => "tdf", :database => "tdf")
 
   def self.mescape(str)
     if (str != nil) then
@@ -91,13 +91,23 @@ class MySQLUtils
 
   def self.getMatchingRaceRunner(year, cyclist_name)
 
+    runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
+    if (runner == nil || runner.size == 0) then
+      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
+    end
+    if (runner == nil || runner.size == 0) then
+      runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(rr.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
+    end
+    if (runner == nil || runner.size == 0) then
     runner = @@client.query("SELECT distinct rr.* FROM race_runners rr join cyclists c on c.id = rr.cyclist_id WHERE   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.firstname), lower(c.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
+    end
     if (runner == nil || runner.size == 0) then
       runner = @@client.query("SELECT distinct rr.* FROM race_runners rr join cyclists c on c.id = rr.cyclist_id WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.lastname), lower(c.firstname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
     end
     if (runner == nil || runner.size == 0) then
       runner = @@client.query("SELECT distinct rr.* FROM race_runners rr join cyclists c on c.id = rr.cyclist_id WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
     end
+
     if (runner != nil && runner.size > 0) then
       if (runner.size == 1) then
         runner.first
