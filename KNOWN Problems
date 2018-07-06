@@ -42,7 +42,8 @@ Prologue / Etape 0: n'est pas importé aujourd'hui:
     format: "_p" comme ici pour 2012:
     http://www.memoire-du-cyclisme.eu/eta_tdf_2006/tdf2012_p.php
 
-Petite histoire des homonymes: select count(distinct c.id), c.firstname, c.lastname, group_concat(rr.year) from race_runners rr join cyclists c on c.id = rr.cyclist_id where rr.lastname like "%" group by c.firstname, c.lastname having count(distinct c.id) > 1 order by 1 desc;
+Petite histoire des homonymes:
+select count(distinct c.id), c.firstname, c.lastname, group_concat(rr.year) from race_runners rr join cyclists c on c.id = rr.cyclist_id where rr.lastname like "%" group by c.firstname, c.lastname having count(distinct c.id) > 1 order by 1 desc;
 
 2	Frédéric	BRUN	2015,1980,1982,1983,1984,1985,1986,1987,1988,1990
 2	Jens	Debusschere	1926,1927,2016,2015
