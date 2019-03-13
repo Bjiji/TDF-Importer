@@ -2,6 +2,7 @@ require 'mysql2'
 require 'chronic_duration'
 require_relative 'nationality_utils'
 require_relative 'utils'
+require_relative 'cyclist_alias_name'
 
 class MySQLUtils
 
@@ -100,6 +101,7 @@ class MySQLUtils
 
   def self.getMatchingRaceRunner(year, cyclist_name)
 
+    cyclist_name = CyclistAliasName.getCanonicalName(cyclist_name)
     runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(rr.firstname), lower(rr.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
     if (runner == nil || runner.size == 0) then
       runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(rr.lastname), lower(rr.firstname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
@@ -116,12 +118,16 @@ class MySQLUtils
     if (runner == nil || runner.size == 0) then
       runner = @@client.query("SELECT distinct rr.* FROM race_runners rr join cyclists c on c.id = rr.cyclist_id WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'")
     end
+    if (runner == nil || runner.size == 0) then
+      query = "SELECT distinct rr.* FROM race_runners rr join cyclists c on c.id = rr.cyclist_id WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.alternate_name)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci and rr.year = '#{year}'"
+      runner = @@client.query(query)
+    end
 
     if (runner != nil && runner.size > 0) then
       if (runner.size == 1) then
         runner.first
       else
-        # raise "duplicate cyclist '#{cyclist_name}' found for year #{year}"
+     #   raise "duplicate cyclist '#{cyclist_name}' found for year #{year}"
       end
     else
       # raise "no cyclist '#{cyclist_name}' found for year #{year}"
@@ -148,8 +154,9 @@ class MySQLUtils
       return rr
     else
       rr = getDossard(year, dossard)
-      if (rr != nil)
+      if (rr != nil) then
         puts "> match between '#{firstname} #{lastname}' and '#{rr['firstname']} #{rr['lastname']}' for year #{year} and dossard #{dossard} ?"
+        setCyclistAlternateName(rr['cyclist_id'], "#{firstname} #{lastname}")
         return rr
       end
     end
@@ -193,6 +200,11 @@ class MySQLUtils
     else
       nil
     end
+  end
+
+  def self.setCyclistAlternateName(cyclist_id, alternate_name)
+    # @@client.query("UPDATE stages set info = CONCAT(IFNULL(CONCAT(info, '\n'),''), '#{mescape(stage_info)}') WHERE id = '#{stage_id}'")
+    @@client.query("UPDATE cyclists set alternate_name = '#{mescape(alternate_name)}' WHERE id = '#{cyclist_id}'")
   end
 
   def self.addInfosToStage(stage_id, stage_info)
@@ -247,7 +259,7 @@ class MySQLUtils
       rr_id = rr['id']
       result = @@client.query("SELECT id from ite_stage_results s WHERE s.stage_id = #{stage_id} and s.race_runner_id = #{rr_id}")
       if (result != nil && result.size > 0) then
-        puts "pb (duplicate ite) on year: #{year}, stage_id: #{stage_id}, position: #{position}, name: #{runner_name}, nationality: #{nationality}, time: #{time_sec ? Time.at(time_sec).utc.strftime("%H:%M:%S") : nil}. discard"
+        puts "pb (duplicate ite) on year: #{year}, stage_id: #{stage_id}, position: #{position}, name: #{rr['lastname']} #{rr['firstname']}, nationality: #{nationality}, time: #{time_sec ? Time.at(time_sec).utc.strftime("%H:%M:%S") : nil}. discard"
         return
       end
     else
