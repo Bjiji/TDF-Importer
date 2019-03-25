@@ -288,7 +288,7 @@ class MySQLUtils
         return
       end
     else
-      raise "team '#{team_name}' not found for year: #{year}, stage_id: #{stage_id}, position: #{position}, time: #{time_sec ? Time.at(time_sec).utc.strftime("%H:%M:%S") : nil}. nil instead"
+      puts "team '#{team_name}' not found for year: #{year}, stage_id: #{stage_id}, position: #{position}, time: #{time_sec ? Time.at(time_sec).utc.strftime("%H:%M:%S") : nil}. nil instead"
     end
     query = "insert into ite_stage_results(stage_id, race_team_id, pos, dns, dnf, dnq, year, diff_time_sec, time_sec, _confidence, runner_s) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     begin
@@ -403,12 +403,12 @@ class MySQLUtils
     doInsert = true
     result = @@client.query("SELECT id from ig_stage_results s WHERE s.stage_id = #{stage_id} and s.year = #{year}")
     if (result != nil && result.size > 0) then
-      if (stage_winner_str != nil && jersey_str != nil) then
-        puts "pb (duplicate ig) on year: #{year}, stage_id: #{stage_id}. overwrite:"
-        @@client.query("DELETE from ig_stage_results WHERE stage_id = #{stage_id} and year = #{year}")
-      else
-        doInsert = false
-      end
+     # if (stage_winner_str != nil && jersey_str != nil) then
+        puts "pb (duplicate ig) on year: #{year}, stage_id: #{stage_id}. discard:"
+        # @@client.query("DELETE from ig_stage_results WHERE stage_id = #{stage_id} and year = #{year}")
+      # else
+        doInsert = false # ? gni ?
+      # end
     end
     if (doInsert) then
       insert_IG_stage_result(stage_id, stage_winner_id, jersey_winner_id, sprint_winner_id, mountain_winner_id, team_winner_id, young_winner_id, combat_winner_id, stage_winner_str, jersey_str, sprint_str, mountain_str, team_str, young_str, combat_str, year)

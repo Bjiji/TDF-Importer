@@ -428,6 +428,13 @@ class ImportUtils
     race = MySQLUtils.getOrCreateRace(year, nil)
     race_id = race['id']
     html = ImportUtils.get_url_resource(url)
+
+    if (!html) then
+               html = ImportUtils.get_url_resource("http://www.memoire-du-cyclisme.eu/eta_tdf/tdf#{year}.php")
+    end
+    if (!html) then
+      raise "unable to find #{url}"
+    end
     doc = Nokogiri::HTML(html)
     doc.encoding = 'utf-8'
     doc.css('script, link').each {|node| node.remove}
@@ -441,8 +448,8 @@ class ImportUtils
     race_description = doc.xpath("//text()[preceding::b[u[text()='La petite histoire']]][following::a[@name='partants']]").text().gsub("µµ", "\n").squeeze(" ").strip;
 
 
-    #cgeneralstr = doc.xpath("//text()[preceding::b[u[text()='Classement général']]][following::b[u[text()='Classement par points']]]").text()
-    cgeneralstr = doc.xpath("//text()[preceding::b[u[text()='Classement général']]]").text()
+    cgeneralstr = doc.xpath("//text()[preceding::b[u[text()='Classement général']]][following::b[u[text()='Classement par points']]]").text()
+    #cgeneralstr = doc.xpath("//text()[preceding::b[u[text()='Classement général']]]").text()
     if cgeneralstr == nil || cgeneralstr == "" then
       cgeneralstr = doc.xpath("//text()[preceding::img[@src='../images/tour_de_france/maillot_jaune.gif']]").text()
     end
