@@ -5,9 +5,10 @@ module CyclistAliasName
   @cyclist_mapping = {}
 
   CSV.foreach("cyclist_alias_name.csv") do |row|
-    cyclist_canonical_name = row[0]
+    cyclist_canonical_name = row[0].strip
     alternate_names = row.drop(1)
     alternate_names.each {|alias_name|
+      alias_name.strip!
       @cyclist_mapping[alias_name] = cyclist_canonical_name
     }
 
@@ -20,7 +21,7 @@ module CyclistAliasName
     if (!result) then
       result = alias_name
     else
-      puts "#{alias_name} alias is a known alias of #{result}"
+      puts "(#{alias_name} alias is a known alias of #{result})"
     end
     return result
   end

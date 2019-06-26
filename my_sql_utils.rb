@@ -135,6 +135,36 @@ class MySQLUtils
     end
   end
 
+  def self.getMatchingCyclist(year, cyclist_name)
+
+    cyclist_name = CyclistAliasName.getCanonicalName(cyclist_name)
+    cyclist = nil
+    if (cyclist == nil || cyclist.size == 0) then
+      cyclist = @@client.query("SELECT distinct c.* FROM cyclists c WHERE   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.firstname), lower(c.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci")
+    end
+    if (cyclist == nil || cyclist.size == 0) then
+      cyclist = @@client.query("SELECT distinct c.* FROM cyclists c WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.lastname), lower(c.firstname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci")
+    end
+    if (cyclist == nil || cyclist.size == 0) then
+      cyclist = @@client.query("SELECT distinct c.* FROM cyclists c WHERE  REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.lastname)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci")
+    end
+    if (cyclist == nil || cyclist.size == 0) then
+      query = "SELECT distinct c.* FROM cyclists c  WHERE REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(concat(lower(c.alternate_name)), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') like   REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(lower(trim('#{mescape(cyclist_name)}')), '[^[:alpha:]]',''), '[Øø]', 'o'), '[ñÑ]', 'n') collate utf8_general_ci"
+      cyclist = @@client.query(query)
+    end
+
+    if (cyclist != nil && cyclist.size > 0) then
+      if (cyclist.size == 1) then
+        cyclist.first
+      else
+        puts "duplicate cyclist '#{cyclist_name}' found: #{cyclist}"
+        #   raise "duplicate cyclist '#{cyclist_name}' found for year #{year}"
+      end
+    else
+      # raise "no cyclist '#{cyclist_name}' found for year #{year}"
+    end
+  end
+
   def self.getRaceRunner(year, cyclist_id, race_team_id)
     runner = @@client.query("SELECT distinct rr.* FROM race_runners rr WHERE rr.cyclist_id = '#{cyclist_id}' AND rr.race_team_id = '#{race_team_id}' and rr.year = '#{year}'")
     if (runner != nil && runner.size > 0) then
@@ -606,6 +636,23 @@ class MySQLUtils
       createRaceRunner(dossard, lastname, firstname, year, cyclist_id, race_team_id, race_id, nationality)
     end
     getRaceRunner(year, cyclist_id, race_team_id)
+  end
+
+  def self.addOtherRaceResultToCyclist(cyclist_id, year, race_name, race_label)
+    result = @@client.query("SELECT * from other_races otr WHERE otr.cyclist_id = #{cyclist_id} and otr.year = #{year} and otr.race_name = '#{race_name}'")
+    if (result != nil && result.size > 0) then
+      puts "pb duplicate other_races for cyclist_id #{cyclist_id}, year #{year}, race: #{race_name}. discard"
+      return
+    end
+    query = "insert into other_races(cyclist_id, year, race_name, race_label) VALUES(?, ?, ?, ?)"
+    begin
+      statement = @@client.prepare(query)
+      statement.execute(cyclist_id, year, race_name, race_label)
+    rescue Exception => e
+      puts e.message
+      puts e.backtrace.inspect
+      raise query
+    end
   end
 
 end
