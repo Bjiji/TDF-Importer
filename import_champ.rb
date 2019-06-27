@@ -37,7 +37,7 @@ def parse_txt_plaf(race_name, race_label, filename)
 end
 
 class ImportRunners
-  #parse_txt_plaf("champ_france", "championnat du monde", "./Championnat_de_France_Tour_.txt")
+  parse_txt_plaf("champ_france", "championnat de france sur route", "./Championnat_de_France_Tour_.txt")
   parse_txt_plaf("champ_world", "championnat du monde", "./Championnat_du_monde_Tour_.txt")
 
 end
