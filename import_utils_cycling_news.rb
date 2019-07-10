@@ -862,4 +862,4 @@ iu = ImportUtils.new
 #iu.parse_result("http://www.cyclingnews.com/tour-de-france/stage-3/results", 2019, 3,)
 #iu.parse_result("http://www.cyclingnews.com/tour-de-france/stage-4/results", 2019, 4)
 
-iu.parse_result("http://www.cyclingnews.com/tour-de-france/stage-4/results", 2019, 5)
+iu.parse_result("http://www.cyclingnews.com/tour-de-france/stage-5/results", 2019, 5)
