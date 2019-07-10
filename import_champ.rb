@@ -37,7 +37,15 @@ def parse_txt_plaf(race_name, race_label, filename)
 end
 
 class ImportRunners
-  parse_txt_plaf("champ_france", "championnat de france sur route", "./Championnat_de_France_Tour_.txt")
-  parse_txt_plaf("champ_world", "championnat du monde", "./Championnat_du_monde_Tour_.txt")
+  #parse_txt_plaf("champ_france", "championnat de france sur route", "./Championnat_de_France_Tour_.txt")
+  #parse_txt_plaf("champ_world", "championnat du monde", "./Championnat_du_monde_Tour_.txt")
+  parse_txt_plaf("champ_austria", "championnat d'Autriche", "./Championnat_de_Autriche_Tour_.txt")
+  parse_txt_plaf("champ_norway", "championnat de Norvège", "./Championnat_de_Norvege_Tour_.txt")
+  parse_txt_plaf("champ_germany", "championnat d'Allemagne", "./Championnat_de_Allemagne_Tour_.txt")
+  parse_txt_plaf("champ_danemark", "championnat du Danemark", "./Championnat_de_Danemark_Tour_.txt")
+  parse_txt_plaf("champ_swizterland", "championnat de Suisse", "./Championnat_de_Suisse_Tour_.txt")
+  parse_txt_plaf("champ_spain", "championnat d'Espagne", "./Championnat_de_Espagne_Tour_.txt")
+  parse_txt_plaf("champ_italy", "championnat d'Italie", "./Championnat_de_Italie_Tour_.txt")
+  parse_txt_plaf("champ_belgium", "championnat de Belgique", "./Championnat_de_Belgique_Tour_.txt")
 
 end

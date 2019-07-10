@@ -23,10 +23,10 @@ years = [1967,1969,1970,1972,1973,1974,1975,1976,1977,1978,1979,1980,1981,1982,1
 years = [1982, 1983, 1978]
 
 importer = Importer.new
-#iu = ImportUtils.new
-#iu.retrieve_stage(2018, 3)
-importer.process_years([2018])
-#Normalizer.updateRunnerLinkage(2018)
+iu = ImportUtils.new
+iu.retrieve_stage(2019, 1)
+# importer.process_years([2019])
+Normalizer.updateRunnerLinkage(2019)
 
 
 
