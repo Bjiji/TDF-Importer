@@ -100,11 +100,11 @@ class ImportUtils
         begin
           pos = Integer(pos_s)
         rescue
-          if (pos =~ 'DNS') then
+          if (pos_s =~ /DNS/) then
             dns = true
-          elsif (pos =~ 'DNF') then
+          elsif (pos_s =~ /DNF/) then
             dnf = true
-          elsif (pos =~ 'DNQ') then
+          elsif (pos_s =~ /DNQ/) then
             dnq = true
           end
           pos = 900
